@@ -220,6 +220,14 @@ public partial class MainViewModel : ViewModelBase
 
     public bool HasExportTarget => !string.IsNullOrWhiteSpace(ExportPath);
 
+    public string ApplicationTitle
+    {
+        get
+        {
+            var version = typeof(MainViewModel).Assembly.GetName().Version;
+            return version is null ? "PSexp" : $"PSexp v{version.Major}.{version.Minor}.{version.Build}";
+        }
+    }
     public string CurrentModeTitle => SelectedMode switch
     {
         ExportMode.QuickExport => "快速导出",

@@ -10,7 +10,7 @@
         x:Class="PsExporter.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/ico.ico"
-        Title="PSexp v3.0"
+        Title="{Binding ApplicationTitle}"
         Width="{x:Static models:AppSettings.DefaultWindowWidth}"
         Height="{x:Static models:AppSettings.DefaultWindowHeight}"
         MinWidth="{x:Static models:AppSettings.MinimumWindowWidth}"
@@ -64,7 +64,7 @@
 
                         <TextBlock Grid.Column="1"
                                    Margin="8,0,0,0"
-                                   Text="PSexp v3.0"
+                                   Text="{Binding ApplicationTitle}"
                                    TextTrimming="CharacterEllipsis"
                                    Classes="subtitle"
                                    FontWeight="SemiBold"
