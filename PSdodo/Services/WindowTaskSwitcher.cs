@@ -1,0 +1,19 @@
+using System.Runtime.InteropServices;
+using Avalonia.Controls;
+namespace PsExporter.Services;
+internal static class WindowTaskSwitcher
+{
+    internal static void Configure(Window window, bool excluded, bool noActivate = false)
+    {
+        window.ShowInTaskbar = !excluded;
+        if (!OperatingSystem.IsWindows() || window.TryGetPlatformHandle() is not { } handle) return;
+        var style=GetWindowLongPtr(handle.Handle,-20).ToInt64();
+        style=excluded ? (style|0x80L)&~0x40000L : (style&~0x80L)|0x40000L;
+        if (noActivate) style|=0x08000000L;
+        SetWindowLongPtr(handle.Handle,-20,new IntPtr(style));
+        SetWindowPos(handle.Handle,IntPtr.Zero,0,0,0,0,0x0001|0x0002|0x0004|0x0010|0x0020);
+    }
+    [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd,int index);
+    [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr hwnd,int index,IntPtr value);
+    [DllImport("user32.dll",EntryPoint="SetWindowPos")] private static extern bool SetWindowPos(IntPtr hwnd,IntPtr after,int x,int y,int width,int height,uint flags);
+}

@@ -1,0 +1,1179 @@
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Avalonia.Controls.Primitives;
+using PsExporter.Controls;
+using PsExporter.Models;
+using PsExporter.Services;
+using PsExporter.ViewModels;
+using SkiaSharp;
+
+namespace PsExporter.Views;
+
+public partial class MainWindow : Window
+{
+    private bool _isDraggingQualityMeter;
+    private readonly WheelStepAccumulator _qualityWheel = new();
+    private readonly ScaleTransform _qualityFeedbackScale = new();
+    private readonly Stopwatch _qualityFeedbackClock = new();
+    private bool _qualityFeedbackFramePending;
+    private double _qualityFeedbackStartScale = 1;
+    private readonly DispatcherTimer _documentSyncTimer;
+    private readonly DispatcherTimer _windowSizeSaveTimer;
+    private readonly DispatcherTimer _statusAnimationTimer;
+    private readonly DispatcherTimer _edgeHoverTimer;
+    private readonly Stopwatch _snapClock = new();
+    private PixelPoint _snapTargetPos;
+    private PixelPoint _dockExpandedPos;
+    private PixelPoint _dockHiddenPos;
+    private DockEdge _dockedEdge = DockEdge.None;
+    private bool _isDocked;
+    private bool _isDockRevealed;
+    private bool _isSnapAnimating;
+    private bool _dockRevealPending;
+    private bool _isEdgeFinishing;
+    private bool _isClosing;
+    private double _dockScaling = 1;
+    private double _captureScale = 1;
+    private int _frameCount;
+    private double _lastFrameMs;
+    private double _maxFrameGapMs;
+    private int _edgeAnimationGeneration;
+    private int _snapDurationMs = 380;
+    private DateTime _pointerOutsideDockSince = DateTime.MinValue;
+    private readonly Stopwatch _psPulseClock = new();
+    private readonly Stopwatch _refreshRotationClock = new();
+    private readonly Stopwatch _refreshSettleClock = new();
+    private readonly ScaleTransform _psStatusScaleTransform = new();
+    private readonly RotateTransform _refreshIconRotateTransform = new();
+    private static readonly PixelPoint _offscreenParkPos = new(-32000, -32000);
+    private SKBitmap? _genieCapturedBitmap;
+    // 收纳后的静态快照保留到下一次展开，避免图标悬停时重新渲染并 PNG 编解码造成起步顿挫。
+    private SKBitmap? _dockRevealBitmap;
+    private GenieAnimationWindow? _genieAnimationWindow;
+    private DockIconWindow? _dockIconWindow;
+    private DockIconPlacement _dockIconPlacement;
+    private MainViewModel? _animationViewModel;
+    private bool _wasRefreshingStatus;
+    private bool _isRefreshSettling;
+    private double _refreshSettleStartAngle;
+    private bool _hasRestoredWindowSize;
+    private bool _hasHandledInitialActivation;
+    private bool _hasConstraintScreenSignature;
+    private PixelRect _constraintScreenBounds;
+    private double _constraintScreenScaling;
+
+    // ====== Win32 子类化：拦截 WM_EXITSIZEMOVE ======
+    // 原生标题栏拖拽结束时，Windows 发送 WM_EXITSIZEMOVE (0x0232)。
+    // 在此消息处直接评估吸附，不依赖 DispatcherTimer（模态循环中不可靠）。
+    private const int WM_EXITSIZEMOVE = 0x0232;
+    private const int WM_NCLBUTTONDOWN = 0x00A1;
+    private const int WM_NCLBUTTONUP = 0x00A2;
+    private const int HTCAPTION = 2;
+    private const int GWL_WNDPROC = -4;
+    private bool _isNativeTitleBarDrag;
+    private IntPtr _originalWndProc;
+    private WndProcDelegate? _subclassProc;   // 持有引用防止 GC 回收
+    private bool _isSubclassed;
+
+    private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        if (msg == WM_NCLBUTTONDOWN && wParam.ToInt64() == HTCAPTION)
+        {
+            _isNativeTitleBarDrag = true;
+            Dispatcher.UIThread.Post(BeginUndockForDrag);
+        }
+        else if (msg == WM_NCLBUTTONUP && _isNativeTitleBarDrag)
+        {
+            _isNativeTitleBarDrag = false;
+            Dispatcher.UIThread.Post(() => EvaluateAndStartEdgeSnap());
+        }
+        else if (msg == WM_EXITSIZEMOVE)
+        {
+            _isNativeTitleBarDrag = false;
+            Dispatcher.UIThread.Post(() => EvaluateAndStartEdgeSnap());
+        }
+
+        return CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+    }
+
+    private void InstallWndProcSubclass()
+    {
+        if (_isSubclassed) return;
+        var handle = TryGetPlatformHandle();
+        if (handle is null) return;
+        var hwnd = handle.Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        _subclassProc = SubclassWndProc;
+        _originalWndProc = GetWindowLongPtr(hwnd, GWL_WNDPROC);
+        SetWindowLongPtr(hwnd, GWL_WNDPROC, Marshal.GetFunctionPointerForDelegate(_subclassProc));
+        _isSubclassed = true;
+    }
+
+    private void UninstallWndProcSubclass()
+    {
+        if (!_isSubclassed) return;
+        var handle = TryGetPlatformHandle();
+        if (handle is not null)
+        {
+            var hwnd = handle.Handle;
+            if (hwnd != IntPtr.Zero)
+                SetWindowLongPtr(hwnd, GWL_WNDPROC, _originalWndProc);
+        }
+        _isSubclassed = false;
+        _subclassProc = null;
+    }
+    // ====== Win32 子类化结束 ======
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        PsStatusDot.RenderTransform = _psStatusScaleTransform;
+        PsStatusDot.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        RefreshIcon.RenderTransform = _refreshIconRotateTransform;
+
+        _documentSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        _documentSyncTimer.Tick += async (_, _) =>
+        {
+            if (!_isClosing && !_isSnapAnimating && DataContext is MainViewModel model)
+                await model.SyncPhotoshopDocumentAsync();
+        };
+        _documentSyncTimer.Start();
+        _windowSizeSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+        _windowSizeSaveTimer.Tick += OnWindowSizeSaveTimerTick;
+        _statusAnimationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _statusAnimationTimer.Tick += OnStatusAnimationTimerTick;
+
+        // 只在展开后检测鼠标离开；收纳静止时不轮询。
+        _edgeHoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        _edgeHoverTimer.Tick += OnEdgeHoverTimerTick;
+
+        Opened += OnWindowOpened;
+        Activated += OnWindowActivated;
+        PositionChanged += OnWindowPositionChanged;
+        SizeChanged += OnWindowSizeChanged;
+        Closing += OnWindowClosing;
+        Closed += OnWindowClosed;
+        Screens.Changed += OnScreensChanged;
+        DataContextChanged += OnAnimationDataContextChanged;
+        AttachAnimationViewModel(DataContext as MainViewModel);
+        if (DataContext is MainViewModel settingsModel) _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(settingsModel.DocumentSyncIntervalMs);
+        AttachQualityMeterPointerHandlers();
+        QualityMeter.RenderTransform = _qualityFeedbackScale;
+        QualityMeter.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        QualityControl.AddHandler(PointerWheelChangedEvent, OnQualityWheelChanged, RoutingStrategies.Tunnel);
+        QualityControl.PointerExited += (_, _) => _qualityWheel.Reset();
+        AddHandler(
+            PointerPressedEvent,
+            OnWindowPointerPressed,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        SetWindowCornerRound();
+    }
+
+    public readonly record struct StatusPulseFrame(double Opacity, double Scale);
+
+    public static StatusPulseFrame CalculatePsStatusPulse(bool isRunning, double elapsedMilliseconds)
+    {
+        if (!isRunning) return new StatusPulseFrame(1, 1);
+        var phase = Math.Max(0, elapsedMilliseconds) % 1600 / 1600 * Math.PI * 2;
+        var wave = (Math.Sin(phase - Math.PI / 2) + 1) / 2;
+        return new StatusPulseFrame(0.58 + 0.42 * wave, 0.9 + 0.1 * wave);
+    }
+
+    public static double CalculateRefreshRotation(bool isRefreshing, double elapsedMilliseconds)
+        => isRefreshing
+            ? Math.Clamp(Math.Max(0, elapsedMilliseconds) / 700, 0, 1) * 360
+            : 0;
+
+    public static double CalculateRefreshSettleRotation(double startAngle, double elapsedMilliseconds)
+    {
+        var progress = Math.Clamp(Math.Max(0, elapsedMilliseconds) / 140, 0, 1);
+        var eased = 1 - Math.Pow(1 - progress, 3);
+        return Math.Clamp(startAngle, 0, 360) * (1 - eased);
+    }
+
+    public static bool IsRefreshSettleComplete(double elapsedMilliseconds)
+        => elapsedMilliseconds >= 140;
+
+    private void OnAnimationDataContextChanged(object? sender, EventArgs e)
+        => AttachAnimationViewModel(DataContext as MainViewModel);
+
+    private void AttachAnimationViewModel(MainViewModel? viewModel)
+    {
+        if (ReferenceEquals(_animationViewModel, viewModel)) return;
+        if (_animationViewModel is not null)
+            _animationViewModel.PropertyChanged -= OnAnimationViewModelPropertyChanged;
+        _animationViewModel = viewModel;
+        if (_animationViewModel is not null)
+        {
+            _animationViewModel.PropertyChanged += OnAnimationViewModelPropertyChanged;
+            _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(_animationViewModel.DocumentSyncIntervalMs);
+        }
+        UpdateStatusAnimationState(restartActiveClocks: true);
+        UpdateQualityEndpoint();
+    }
+
+    private void OnAnimationViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.Quality))
+        {
+            UpdateQualityEndpoint();
+            PulseQualityMeter();
+        }
+        if (e.PropertyName is nameof(MainViewModel.SelectedMode) or nameof(MainViewModel.IsViewSetting))
+        {
+            // 模式的字段数不同，进入新页面从顶部开始，避免沿用画板表单的旧滚动位置。
+            ExportScrollViewer.Offset = default;
+        }
+        if (e.PropertyName == nameof(MainViewModel.DocumentSyncIntervalMs) && _animationViewModel is { } syncModel)
+            _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(syncModel.DocumentSyncIntervalMs);
+        if (string.IsNullOrEmpty(e.PropertyName)
+            || e.PropertyName == nameof(MainViewModel.IsPsRunning)
+            || e.PropertyName == nameof(MainViewModel.IsRefreshingStatus))
+        {
+            UpdateStatusAnimationState(restartActiveClocks: false);
+            return;
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.EnableEdgeSnap)
+            && _animationViewModel is { EnableEdgeSnap: false }
+            && _isDocked)
+        {
+            BeginUndockForDrag();
+        }
+    }
+
+    private void UpdateStatusAnimationState(bool restartActiveClocks)
+    {
+        var isPsRunning = _animationViewModel?.IsPsRunning == true;
+        var isRefreshing = _animationViewModel?.IsRefreshingStatus == true;
+
+        if (isPsRunning)
+        {
+            if (restartActiveClocks || !_psPulseClock.IsRunning)
+                _psPulseClock.Restart();
+        }
+        else
+        {
+            _psPulseClock.Reset();
+            ApplyPsStatusPulse(CalculatePsStatusPulse(false, 0));
+        }
+
+        if (isRefreshing)
+        {
+            if (restartActiveClocks || !_refreshRotationClock.IsRunning)
+            {
+                _refreshRotationClock.Restart();
+                _refreshSettleClock.Reset();
+                _isRefreshSettling = false;
+            }
+        }
+        else if (_wasRefreshingStatus)
+        {
+            _refreshRotationClock.Stop();
+            _refreshSettleStartAngle = _refreshIconRotateTransform.Angle % 360;
+            if (_refreshSettleStartAngle > 0.01)
+            {
+                _isRefreshSettling = true;
+                _refreshSettleClock.Restart();
+            }
+            else
+            {
+                ResetRefreshAnimation();
+            }
+        }
+        else if (!_isRefreshSettling)
+        {
+            ResetRefreshAnimation();
+        }
+
+        _wasRefreshingStatus = isRefreshing;
+        if (ShouldRunStatusAnimation(_isDocked, _isDockRevealed, _isSnapAnimating)
+            && (isPsRunning || isRefreshing || _isRefreshSettling))
+            _statusAnimationTimer.Start();
+        else
+            _statusAnimationTimer.Stop();
+    }
+
+    public static bool ShouldRunStatusAnimation(bool docked, bool revealed, bool animating)
+        => !animating && (!docked || revealed);
+
+    private void OnStatusAnimationTimerTick(object? sender, EventArgs e)
+    {
+        if (!ShouldRunStatusAnimation(_isDocked, _isDockRevealed, _isSnapAnimating))
+        {
+            _statusAnimationTimer.Stop();
+            return;
+        }
+        var isPsRunning = _animationViewModel?.IsPsRunning == true;
+        var isRefreshing = _animationViewModel?.IsRefreshingStatus == true;
+
+        if (isPsRunning)
+            ApplyPsStatusPulse(CalculatePsStatusPulse(true, _psPulseClock.Elapsed.TotalMilliseconds));
+        if (isRefreshing)
+        {
+            _refreshIconRotateTransform.Angle = CalculateRefreshRotation(
+                true,
+                _refreshRotationClock.Elapsed.TotalMilliseconds);
+        }
+        else if (_isRefreshSettling)
+        {
+            _refreshIconRotateTransform.Angle = CalculateRefreshSettleRotation(
+                _refreshSettleStartAngle,
+                _refreshSettleClock.Elapsed.TotalMilliseconds);
+            if (IsRefreshSettleComplete(_refreshSettleClock.Elapsed.TotalMilliseconds))
+                ResetRefreshAnimation();
+        }
+
+        if (!isPsRunning && !isRefreshing && !_isRefreshSettling)
+            _statusAnimationTimer.Stop();
+    }
+
+    private void ResetRefreshAnimation()
+    {
+        _refreshRotationClock.Reset();
+        _refreshSettleClock.Reset();
+        _isRefreshSettling = false;
+        _refreshSettleStartAngle = 0;
+        _refreshIconRotateTransform.Angle = 0;
+    }
+
+    private void ApplyPsStatusPulse(StatusPulseFrame frame)
+    {
+        PsStatusDot.Opacity = frame.Opacity;
+        _psStatusScaleTransform.ScaleX = frame.Scale;
+        _psStatusScaleTransform.ScaleY = frame.Scale;
+    }
+
+    private void OnWindowClosed(object? sender, EventArgs e)
+    {
+        _isClosing = true;
+        _documentSyncTimer.Stop();
+        Screens.Changed -= OnScreensChanged;
+        _edgeAnimationGeneration++;
+        _statusAnimationTimer.Stop();
+        _windowSizeSaveTimer.Stop();
+        _edgeHoverTimer.Stop();
+        _snapClock.Stop();
+        _psPulseClock.Stop();
+        _refreshRotationClock.Stop();
+        _refreshSettleClock.Stop();
+        CloseGenieAnimationWindow();
+        CloseDockIcon();
+        ClearDockRevealBitmap();
+        _genieAnimationWindow?.Close();
+        _dockIconWindow?.Close();
+        UninstallWndProcSubclass();
+        if (_animationViewModel is not null)
+            _animationViewModel.PropertyChanged -= OnAnimationViewModelPropertyChanged;
+        DataContextChanged -= OnAnimationDataContextChanged;
+    }
+
+    public readonly record struct WindowSizeConstraints(
+        double Width,
+        double Height,
+        double MinWidth,
+        double MinHeight,
+        double MaxWidth,
+        double MaxHeight);
+
+    public static WindowSizeConstraints CalculateWindowConstraints(
+        double requestedWidth,
+        double requestedHeight,
+        double workingAreaWidthDip,
+        double workingAreaHeightDip,
+        double safeMarginDip = 16)
+    {
+        var maxWidth = Math.Max(1, workingAreaWidthDip - safeMarginDip * 2);
+        var maxHeight = Math.Max(1, workingAreaHeightDip - safeMarginDip * 2);
+        var minWidth = Math.Min(AppSettings.MinimumWindowWidth, maxWidth);
+        var minHeight = Math.Min(AppSettings.MinimumWindowHeight, maxHeight);
+        var normalized = SettingsService.NormalizeWindowSize(requestedWidth, requestedHeight);
+        var width = Math.Clamp(normalized.Width, minWidth, maxWidth);
+        var height = Math.Clamp(normalized.Height, minHeight, maxHeight);
+        return new WindowSizeConstraints(width, height, minWidth, minHeight, maxWidth, maxHeight);
+    }
+
+    public void RestoreSavedWindowSize()
+    {
+        if (_hasRestoredWindowSize || DataContext is not MainViewModel vm) return;
+        var saved = vm.GetSavedWindowSize();
+        ApplyScreenConstraints(saved.Width, saved.Height);
+        _hasRestoredWindowSize = true;
+    }
+
+    private static bool NearlyEqual(double first, double second)
+        => Math.Abs(first - second) < 0.1;
+
+    private static bool HasSameScreenSignature(
+        bool hasSignature,
+        PixelRect currentBounds,
+        double currentScaling,
+        PixelRect nextBounds,
+        double nextScaling)
+        => hasSignature
+           && currentBounds == nextBounds
+           && NearlyEqual(currentScaling, nextScaling);
+
+    private bool ApplyScreenConstraints(double requestedWidth, double requestedHeight, bool skipIfSameScreen = false)
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is null)
+        {
+            var normalized = SettingsService.NormalizeWindowSize(requestedWidth, requestedHeight);
+            if (!NearlyEqual(MinWidth, AppSettings.MinimumWindowWidth))
+                MinWidth = AppSettings.MinimumWindowWidth;
+            if (!NearlyEqual(MinHeight, AppSettings.MinimumWindowHeight))
+                MinHeight = AppSettings.MinimumWindowHeight;
+            if (!NearlyEqual(Bounds.Width, normalized.Width))
+                Width = normalized.Width;
+            if (!NearlyEqual(Bounds.Height, normalized.Height))
+                Height = normalized.Height;
+            return true;
+        }
+
+        if (skipIfSameScreen && HasSameScreenSignature(
+                _hasConstraintScreenSignature,
+                _constraintScreenBounds,
+                _constraintScreenScaling,
+                screen.Bounds,
+                screen.Scaling))
+        {
+            return false;
+        }
+
+        _constraintScreenBounds = screen.Bounds;
+        _constraintScreenScaling = screen.Scaling;
+        _hasConstraintScreenSignature = true;
+
+        var scaling = Math.Max(screen.Scaling, 0.1);
+        var constraints = CalculateWindowConstraints(
+            requestedWidth,
+            requestedHeight,
+            screen.WorkingArea.Width / scaling,
+            screen.WorkingArea.Height / scaling);
+        if (!NearlyEqual(MinWidth, constraints.MinWidth))
+            MinWidth = constraints.MinWidth;
+        if (!NearlyEqual(MinHeight, constraints.MinHeight))
+            MinHeight = constraints.MinHeight;
+        if (!NearlyEqual(MaxWidth, constraints.MaxWidth))
+            MaxWidth = constraints.MaxWidth;
+        if (!NearlyEqual(MaxHeight, constraints.MaxHeight))
+            MaxHeight = constraints.MaxHeight;
+        if (!NearlyEqual(Bounds.Width, constraints.Width))
+            Width = constraints.Width;
+        if (!NearlyEqual(Bounds.Height, constraints.Height))
+            Height = constraints.Height;
+        return true;
+    }
+
+    private void OnWindowPositionChanged(object? sender, PixelPointEventArgs e)
+    {
+        if (_isSnapAnimating || _isDocked) return;
+        if (!_hasRestoredWindowSize || WindowState != WindowState.Normal) return;
+
+        if (ApplyScreenConstraints(Bounds.Width, Bounds.Height, skipIfSameScreen: true))
+            InvalidateVisual();
+
+        // 吸附评估由 WM_EXITSIZEMOVE 触发，PositionChanged 中不做防抖
+    }
+
+    /// <summary>
+    /// 评估拖拽结束的位置。进入 48 DIP 的边缘热区即开始神灯收纳，最终变成贴边半露出图标。
+    /// </summary>
+    public bool EvaluateAndStartEdgeSnap(int thresholdDip = 48, int durationMs = 280)
+    {
+        if (_isClosing || _isSnapAnimating || _isDocked || WindowState != WindowState.Normal) return false;
+        if (DataContext is not MainViewModel vm || !vm.EnableEdgeSnap) return false;
+
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is null) return false;
+
+        var scaling = Math.Max(screen.Scaling, 0.1);
+        var widthPx = (int)Math.Round(Bounds.Width * scaling);
+        var heightPx = (int)Math.Round(Bounds.Height * scaling);
+        var windowRect = new PixelRect(Position.X, Position.Y, widthPx, heightPx);
+        var dock = EdgeSnapHelper.CalculateDockTarget(
+            windowRect,
+            screen.WorkingArea,
+            (int)Math.Round(thresholdDip * scaling),
+            (int)Math.Round(12 * scaling));
+        if (!dock.IsDockable) return false;
+
+        var allScreenBounds = new System.Collections.Generic.List<PixelRect>();
+        foreach (var availableScreen in Screens.All)
+            allScreenBounds.Add(availableScreen.Bounds);
+        if (!EdgeSnapHelper.IsOuterScreenEdge(screen.Bounds, allScreenBounds, dock.Edge))
+            return false;
+
+        _dockScaling = scaling;
+        _dockedEdge = dock.Edge;
+        _dockExpandedPos = dock.ExpandedPosition;
+        _dockHiddenPos = dock.HiddenPosition;
+        _dockIconPlacement = EdgeSnapHelper.CalculateDockIconPlacement(
+            screen.WorkingArea,
+            _dockExpandedPos,
+            widthPx,
+            heightPx,
+            _dockedEdge,
+            iconSizePx: (int)Math.Round(56 * scaling),
+            // 仅露出一半图标；收纳态不保留完整窗口或额外窄条。
+            edgeInsetPx: (int)Math.Round(28 * scaling));
+        WindowTaskSwitcher.Configure(this, excluded: true);
+        _isDocked = true;
+        _isDockRevealed = false;
+        vm.IsEdgeDocked = true;
+        StartEdgeAnimation(_dockHiddenPos, durationMs);
+        return true;
+    }
+
+    private SKBitmap? CaptureWindowBitmap()
+    {
+        try
+        {
+            var widthDip = Bounds.Width;
+            var heightDip = Bounds.Height;
+            if (widthDip <= 0 || heightDip <= 0) return null;
+
+            var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+            var scaling = CalculateCaptureScale(widthDip, heightDip, _dockScaling);
+            _captureScale = scaling;
+            var pixelWidth = (int)Math.Max(1, Math.Round(widthDip * scaling));
+            var pixelHeight = (int)Math.Max(1, Math.Round(heightDip * scaling));
+
+            using var rtb = new RenderTargetBitmap(new PixelSize(pixelWidth, pixelHeight), new Vector(96 * scaling, 96 * scaling));
+            rtb.Render(MainContentBorder);
+
+            var info = new SKImageInfo(pixelWidth, pixelHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
+            var bitmap = new SKBitmap(info);
+            rtb.CopyPixels(
+                new PixelRect(0, 0, pixelWidth, pixelHeight),
+                bitmap.GetPixels(),
+                bitmap.ByteCount,
+                bitmap.RowBytes);
+            bitmap.SetImmutable();
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void CloseGenieAnimationWindow()
+    {
+        _genieAnimationWindow?.Park(_offscreenParkPos);
+        _genieCapturedBitmap?.Dispose();
+        _genieCapturedBitmap = null;
+    }
+
+    private void ClearDockRevealBitmap()
+    {
+        _dockRevealBitmap?.Dispose();
+        _dockRevealBitmap = null;
+    }
+
+    private void ShowDockIcon()
+    {
+        if (_dockIconWindow is null)
+        {
+            var screen = Screens.ScreenFromPoint(_dockIconPlacement.Position) ?? Screens.Primary;
+            var scaling = Math.Max(screen?.Scaling ?? 1.0, 0.1);
+            var sizeDip = _dockIconPlacement.SizePx / scaling;
+            _dockIconWindow = new DockIconWindow(_dockIconPlacement.Position, sizeDip);
+            _dockIconWindow.RevealRequested += OnDockIconRevealRequested;
+            _dockIconWindow.Show(); // 独立顶层工具窗，不随主窗口 Win+D 最小化。
+        }
+        _dockIconWindow.ShowAt(_dockIconPlacement.Position, _dockIconPlacement.SizePx / _dockScaling, _dockScaling);
+    }
+
+    private void CloseDockIcon()
+    {
+        _dockIconWindow?.Park(_offscreenParkPos);
+    }
+
+    private void OnDockIconRevealRequested(object? sender, EventArgs e)
+    {
+        if (!_isDocked || _isDockRevealed) return;
+        if (_isSnapAnimating)
+        {
+            _dockRevealPending = true;
+            return;
+        }
+        _isDockRevealed = true;
+        _pointerOutsideDockSince = DateTime.MinValue;
+        StartEdgeAnimation(_dockExpandedPos, durationMs: 260);
+    }
+
+    /// <summary>
+    /// 展开/收纳的神灯动画都从“完整窗口原位置”进行渲染。
+    /// 收纳终态才将真实窗口挪到隐藏位置并替换为边缘图标。
+    /// </summary>
+    private PixelPoint GetAnimationCanvasPosition(bool isHiding)
+        => _dockExpandedPos;
+
+    private void BeginUndockForDrag()
+    {
+        if (!_isDocked) return;
+        _edgeHoverTimer.Stop();
+        _dockRevealPending = false;
+        _edgeAnimationGeneration++;
+        _isSnapAnimating = false;
+        _isEdgeFinishing = false;
+        _snapClock.Stop();
+        CloseGenieAnimationWindow();
+        CloseDockIcon();
+        ClearDockRevealBitmap();
+        Opacity = 1.0;
+        Position = _dockExpandedPos;
+        _isDocked = false;
+        WindowTaskSwitcher.Configure(this, excluded: false);
+        _isDockRevealed = false;
+        _dockedEdge = DockEdge.None;
+        if (DataContext is MainViewModel vm)
+            vm.IsEdgeDocked = false;
+        UpdateStatusAnimationState(restartActiveClocks: false);
+    }
+
+    public static double CalculateCaptureScale(double width, double height, double screenScale)
+    {
+        if (width <= 0 || height <= 0 || !double.IsFinite(width * height)) return 1;
+        return Math.Min(Math.Clamp(screenScale, 0.1, 1.5), Math.Sqrt(2_000_000 / (width * height)));
+    }
+
+    private static async System.Threading.Tasks.Task NextFrameAsync(Window window)
+    {
+        var completion = new System.Threading.Tasks.TaskCompletionSource();
+        window.RequestAnimationFrame(_ => completion.TrySetResult());
+        // 锁屏、最小化或系统暂停合成时仍要结束交接，不能让收纳状态永久锁住。
+        await System.Threading.Tasks.Task.WhenAny(completion.Task, System.Threading.Tasks.Task.Delay(100));
+    }
+
+    private async void StartEdgeAnimation(PixelPoint target, int durationMs)
+    {
+        if (_isClosing || _isSnapAnimating) return;
+        _isSnapAnimating = true; // 在捕获纹理和任何 await 之前锁住，防止悬停重复进入。
+        _isEdgeFinishing = false;
+        _edgeHoverTimer.Stop();
+        UpdateStatusAnimationState(restartActiveClocks: false);
+        var generation = ++_edgeAnimationGeneration;
+        var hiding = target == _dockHiddenPos;
+        _snapTargetPos = target;
+        _snapDurationMs = Math.Max(1, durationMs);
+        try
+        {
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            WindowTaskSwitcher.Configure(this, excluded: true);
+            if (hiding)
+            {
+                ClearDockRevealBitmap();
+                _genieCapturedBitmap = CaptureWindowBitmap();
+            }
+            else
+            {
+                _genieCapturedBitmap = _dockRevealBitmap;
+                _dockRevealBitmap = null;
+            }
+            if (_genieCapturedBitmap is null)
+            {
+                await FinishEdgeAnimationAsync(generation, hiding);
+                return;
+            }
+            if (_genieAnimationWindow is null)
+            {
+                _genieAnimationWindow = new GenieAnimationWindow(_dockExpandedPos, Bounds.Width, Bounds.Height,
+                    _genieCapturedBitmap, _captureScale);
+                _genieAnimationWindow.Show();
+            }
+            else
+            {
+                _genieAnimationWindow.Position = _dockExpandedPos;
+                _genieAnimationWindow.Width = Bounds.Width;
+                _genieAnimationWindow.Height = Bounds.Height;
+                _genieAnimationWindow.SetBitmap(_genieCapturedBitmap, _captureScale);
+                if (!_genieAnimationWindow.IsVisible) _genieAnimationWindow.Show();
+                WindowTaskSwitcher.Configure(_genieAnimationWindow, excluded: true, noActivate: true);
+            }
+            SetAnimationMesh(0, hiding);
+            _genieAnimationWindow.Opacity = 1;
+            await NextFrameAsync(_genieAnimationWindow);
+            await NextFrameAsync(_genieAnimationWindow);
+            if (generation != _edgeAnimationGeneration || _isClosing) return;
+            Opacity = 0;
+            Position = _offscreenParkPos;
+            CloseDockIcon();
+            _snapClock.Restart();
+            _frameCount = 0;
+            _lastFrameMs = 0;
+            _maxFrameGapMs = 0;
+            QueueEdgeFrame(generation);
+            _ = EnsureEdgeAnimationCompletesAsync(generation, hiding);
+        }
+        catch (Exception error)
+        {
+            Debug.WriteLine("收纳动画失败: " + error);
+            await FinishEdgeAnimationAsync(generation, hiding);
+        }
+    }
+
+    private EdgeSnapHelper.GenieMeshData? _animationTopology;
+    private void SetAnimationMesh(double progress, bool hiding)
+    {
+        _animationTopology = EdgeSnapHelper.CalculateGenieMeshData(_dockedEdge,
+            EdgeSnapHelper.CalculateGenieAnimationProgress(progress), hiding,
+            (float)Bounds.Width, (float)Bounds.Height, cols: 16, rows: 16, peekPx: 0,
+            topology: _animationTopology);
+        _genieAnimationWindow?.SetMesh(_animationTopology);
+    }
+
+    private void QueueEdgeFrame(int generation)
+        => _genieAnimationWindow?.RequestAnimationFrame(_ => AdvanceEdgeFrame(generation));
+
+    private async System.Threading.Tasks.Task EnsureEdgeAnimationCompletesAsync(int generation, bool hiding)
+    {
+        // 系统隐藏动画承载窗时可能不再提供帧回调。仅在单次动画中保留一次超时兜底。
+        await System.Threading.Tasks.Task.Delay(_snapDurationMs + 200);
+        if (generation == _edgeAnimationGeneration && _isSnapAnimating && !_isEdgeFinishing && !_isClosing)
+            await FinishEdgeAnimationAsync(generation, hiding);
+    }
+
+    private async void AdvanceEdgeFrame(int generation)
+    {
+        if (generation != _edgeAnimationGeneration || !_isSnapAnimating || _isEdgeFinishing || _isClosing) return;
+        var hiding = _snapTargetPos == _dockHiddenPos;
+        try
+        {
+            var elapsed = _snapClock.Elapsed.TotalMilliseconds;
+            _maxFrameGapMs = Math.Max(_maxFrameGapMs, elapsed - _lastFrameMs);
+            _lastFrameMs = elapsed;
+            _frameCount++;
+            var progress = Math.Clamp(elapsed / _snapDurationMs, 0, 1);
+            SetAnimationMesh(progress, hiding);
+            if (progress < 1) QueueEdgeFrame(generation);
+            else await FinishEdgeAnimationAsync(generation, hiding);
+        }
+        catch (Exception error)
+        {
+            Debug.WriteLine("收纳帧失败: " + error);
+            await FinishEdgeAnimationAsync(generation, hiding);
+        }
+    }
+
+    private async System.Threading.Tasks.Task FinishEdgeAnimationAsync(int generation, bool hiding)
+    {
+        if (generation != _edgeAnimationGeneration || _isClosing || _isEdgeFinishing) return;
+        _isEdgeFinishing = true;
+        _snapClock.Stop();
+        if (hiding)
+        {
+            ClearDockRevealBitmap();
+            _dockRevealBitmap = _genieCapturedBitmap; // 转移所有权，不复制整张高 DPI 位图。
+            _genieCapturedBitmap = null;
+            ShowDockIcon();
+            Position = _offscreenParkPos;
+            Opacity = 0;
+        }
+        else
+        {
+            Position = _dockExpandedPos;
+            Opacity = 1;
+        }
+        // 交接期间仍保持动画锁，防止另一轮悬停提前销毁正在绘制的纹理。
+        if (_genieAnimationWindow is { Opacity: > 0 })
+        {
+            await NextFrameAsync(_genieAnimationWindow);
+            await NextFrameAsync(_genieAnimationWindow);
+        }
+        if (generation != _edgeAnimationGeneration || _isClosing) return;
+        CloseGenieAnimationWindow();
+        _isSnapAnimating = false;
+        _isEdgeFinishing = false;
+        UpdateStatusAnimationState(restartActiveClocks: false);
+        if (_isDocked && _isDockRevealed) _edgeHoverTimer.Start();
+        if (hiding && _dockRevealPending)
+        {
+            _dockRevealPending = false;
+            if (GetCursorPos(out var cursor)
+                && new PixelRect(
+                    _dockIconPlacement.Position.X - (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling),
+                    _dockIconPlacement.Position.Y - (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling),
+                    _dockIconPlacement.SizePx + 2 * (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling),
+                    _dockIconPlacement.SizePx + 2 * (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling))
+                    .Contains(new PixelPoint(cursor.X, cursor.Y)))
+                OnDockIconRevealRequested(this, EventArgs.Empty);
+        }
+        Debug.WriteLine($"Dock animation: {_frameCount} frames; maximum interval {_maxFrameGapMs:F1} ms");
+    }
+
+    private void OnScreensChanged(object? sender, EventArgs e)
+    {
+        if (!_isDocked || _isClosing) return;
+        BeginUndockForDrag();
+        WindowState = WindowState.Normal;
+        var screen = Screens.ScreenFromPoint(Position) ?? Screens.Primary;
+        if (screen is null) return;
+        var width = (int)Math.Round(Bounds.Width * screen.Scaling);
+        var height = (int)Math.Round(Bounds.Height * screen.Scaling);
+        Position = new PixelPoint(
+            Math.Clamp(Position.X, screen.WorkingArea.X, Math.Max(screen.WorkingArea.X, screen.WorkingArea.Right - width)),
+            Math.Clamp(Position.Y, screen.WorkingArea.Y, Math.Max(screen.WorkingArea.Y, screen.WorkingArea.Bottom - height)));
+    }
+
+    private void OnEdgeHoverTimerTick(object? sender, EventArgs e)
+    {
+        if (!_isDocked || !_isDockRevealed || _isSnapAnimating || _dockedEdge == DockEdge.None)
+        {
+            _edgeHoverTimer.Stop();
+            return;
+        }
+
+        if (!GetCursorPos(out var cursor)) return;
+
+        // 收纳态只由图标的 PointerEntered/PointerPressed 触发展开，
+        // 不再使用整条边或隐藏窗口感应带，避免误触。
+        if (!_isDockRevealed) return;
+
+        var insideWindow = IsPointInsideWindow(cursor, _dockExpandedPos, _dockScaling);
+
+        if (insideWindow)
+        {
+            _pointerOutsideDockSince = DateTime.MinValue;
+            return;
+        }
+
+        if (_pointerOutsideDockSince == DateTime.MinValue)
+        {
+            _pointerOutsideDockSince = DateTime.UtcNow;
+            return;
+        }
+
+        if ((DateTime.UtcNow - _pointerOutsideDockSince).TotalMilliseconds < (DataContext is MainViewModel timingModel ? timingModel.DockRetractDelayMs : 420)) return;
+
+        _isDockRevealed = false;
+        _pointerOutsideDockSince = DateTime.MinValue;
+        StartEdgeAnimation(_dockHiddenPos, durationMs: 280);
+    }
+
+    private bool IsPointInsideWindow(NativePoint cursor, PixelPoint expandedPosition, double scaling)
+    {
+        var widthPx = (int)Math.Round(Bounds.Width * Math.Max(scaling, 0.1));
+        var heightPx = (int)Math.Round(Bounds.Height * Math.Max(scaling, 0.1));
+        var slack = (int)Math.Ceiling(24 * Math.Max(scaling, 0.1));
+        return cursor.X >= expandedPosition.X - slack
+            && cursor.X < expandedPosition.X + widthPx + slack
+            && cursor.Y >= expandedPosition.Y - slack
+            && cursor.Y < expandedPosition.Y + heightPx + slack;
+    }
+
+
+    private void OnWindowOpened(object? sender, EventArgs e)
+    {
+        SetWindowCornerRound();
+        // 此时窗口已关联实际显示器，避免初始化阶段按错误屏幕写入过小 MaxWidth。
+        RestoreSavedWindowSize();
+        // 窗口已关联实际句柄，安装子类化拦截 WM_EXITSIZEMOVE
+        InstallWndProcSubclass();
+    }
+
+    public static (bool FadeTop, bool FadeBottom) GetScrollFadeDirections(
+        double offsetY,
+        double viewportHeight,
+        double extentHeight)
+    {
+        const double tolerance = 0.5;
+        return (
+            offsetY > tolerance,
+            offsetY + viewportHeight < extentHeight - tolerance);
+    }
+
+    private async void OnWindowActivated(object? sender, EventArgs e)
+    {
+        if (!_hasHandledInitialActivation)
+        {
+            _hasHandledInitialActivation = true;
+            return;
+        }
+
+        if (!_isSnapAnimating && (!_isDocked || _isDockRevealed) && DataContext is MainViewModel vm)
+            await vm.RefreshOnActivationAsync();
+    }
+
+    private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (!_hasRestoredWindowSize || WindowState != WindowState.Normal) return;
+        _windowSizeSaveTimer.Stop();
+        _windowSizeSaveTimer.Start();
+    }
+
+    private void OnWindowSizeSaveTimerTick(object? sender, EventArgs e)
+    {
+        _windowSizeSaveTimer.Stop();
+        SaveCurrentWindowSize();
+    }
+
+    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        _windowSizeSaveTimer.Stop();
+        SaveCurrentWindowSize();
+    }
+
+    private void SaveCurrentWindowSize()
+    {
+        if (!_hasRestoredWindowSize || WindowState != WindowState.Normal || DataContext is not MainViewModel vm)
+            return;
+        vm.SaveWindowSize(Bounds.Width, Bounds.Height);
+    }
+
+    private void AttachQualityMeterPointerHandlers()
+    {
+        QualityMeter.AddHandler(
+            PointerPressedEvent,
+            OnQualityMeterPointerPressed,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        QualityMeter.AddHandler(
+            PointerMovedEvent,
+            OnQualityMeterPointerMoved,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        QualityMeter.AddHandler(
+            PointerReleasedEvent,
+            OnQualityMeterPointerReleased,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        QualityMeter.PointerCaptureLost += OnQualityMeterPointerCaptureLost;
+    }
+
+    private void OnQualityWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !QualityControl.IsEffectivelyEnabled) return;
+        e.Handled = true;
+        var steps = _qualityWheel.Add(e.Delta, increaseUp: true);
+        if (steps == 0) return;
+        // 输入框尚在编辑时先结束编辑，再使用滚轮的最终值，避免失焦覆盖调节结果。
+        if (QualityInput.IsFocused)
+            TopLevel.GetTopLevel(this)?.FocusManager?.Focus(null!, NavigationMethod.Pointer, e.KeyModifiers);
+        var quality = Math.Clamp(vm.Quality + steps, 1, 100);
+        if (quality != vm.Quality) vm.Quality = quality;
+        else PulseQualityMeter();
+    }
+
+    private void UpdateQualityEndpoint()
+    {
+        if (DataContext is not MainViewModel vm) return;
+        var index = Math.Clamp((vm.Quality - 1) / 4, 0, QualityMeter.Children.Count - 1);
+        for (var i = 0; i < QualityMeter.Children.Count; i++)
+            QualityMeter.Children[i].Classes.Set("quality-current", i == index);
+    }
+
+    private void PulseQualityMeter()
+    {
+        if (_isClosing || !QualityMeter.IsEffectivelyVisible || _isSnapAnimating) return;
+        _qualityFeedbackStartScale = _qualityFeedbackScale.ScaleY;
+        _qualityFeedbackClock.Restart();
+        RequestQualityFeedbackFrame();
+    }
+
+    private void RequestQualityFeedbackFrame()
+    {
+        if (_qualityFeedbackFramePending) return;
+        _qualityFeedbackFramePending = true;
+        RequestAnimationFrame(_ =>
+        {
+            _qualityFeedbackFramePending = false;
+            if (_isClosing || !QualityMeter.IsEffectivelyVisible || _isSnapAnimating)
+            {
+                _qualityFeedbackScale.ScaleY = 1;
+                _qualityFeedbackClock.Reset();
+                return;
+            }
+            var t = Math.Clamp(_qualityFeedbackClock.Elapsed.TotalMilliseconds / 180, 0, 1);
+            _qualityFeedbackScale.ScaleY = Math.Min(1.12,
+                _qualityFeedbackStartScale + (1 - _qualityFeedbackStartScale) * t + 0.075 * Math.Sin(Math.PI * t));
+            if (t < 1) RequestQualityFeedbackFrame();
+            else
+            {
+                _qualityFeedbackScale.ScaleY = 1;
+                _qualityFeedbackClock.Reset();
+            }
+        });
+    }
+
+    private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (QualityInput.IsFocused)
+        {
+            var p = e.GetPosition(QualityInput);
+            if (p.X < 0 || p.Y < 0 || p.X > QualityInput.Bounds.Width || p.Y > QualityInput.Bounds.Height)
+                TopLevel.GetTopLevel(this)?.FocusManager?.Focus(null!, NavigationMethod.Pointer, e.KeyModifiers);
+        }
+        if (e.Handled || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            || _isSnapAnimating || DataContext is not MainViewModel { EnableBlankDrag: true }) return;
+        var position = e.GetPosition(this);
+        if (position.X < 8 || position.Y < 8 || position.X > Bounds.Width - 8 || position.Y > Bounds.Height - 8) return;
+        for (var visual = e.Source as Visual; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is Button or TextBox or ScrollBar or Thumb or Slider or ComboBox or NumericUpDown
+                or ToggleSwitch or CheckBox or ListBox) return;
+            if (visual is Control { Name: "QualityMeter" }) return;
+        }
+        // 空白处直接进入系统移动循环；导出、文本编辑、质量拖动和边缘缩放各保留原有操作。
+        BeginUndockForDrag();
+        BeginMoveDrag(e);
+        e.Handled = true;
+    }
+
+    public void ActivateFromExternalRequest()
+    {
+        if (_isDocked) BeginUndockForDrag();
+        var wasMinimized = WindowState == WindowState.Minimized;
+        if (!IsVisible)
+            Show();
+        if (wasMinimized)
+            WindowState = WindowState.Normal;
+
+        Activate();
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+
+        var handle = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        if (handle == IntPtr.Zero) return;
+        if (wasMinimized)
+            _ = ShowWindow(handle, 9); // SW_RESTORE
+        _ = SetForegroundWindow(handle);
+    }
+
+    /// <summary>最小化按钮</summary>
+    private void OnMinimizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    /// <summary>关闭按钮</summary>
+    private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
+
+    private void OnQualityMeterPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(QualityMeter).Properties.IsLeftButtonPressed)
+        {
+            _isDraggingQualityMeter = true;
+            e.Pointer.Capture(QualityMeter);
+            UpdateQualityFromPointer(QualityMeter, e);
+            PulseQualityMeter();
+            e.Handled = true;
+        }
+    }
+
+    private void OnQualityMeterPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isDraggingQualityMeter) return;
+
+        if (!e.GetCurrentPoint(QualityMeter).Properties.IsLeftButtonPressed)
+        {
+            EndQualityMeterDrag(e.Pointer);
+            return;
+        }
+
+        UpdateQualityFromPointer(QualityMeter, e);
+        e.Handled = true;
+    }
+
+    private void OnQualityMeterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_isDraggingQualityMeter) return;
+
+        UpdateQualityFromPointer(QualityMeter, e);
+        EndQualityMeterDrag(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void OnQualityMeterPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _isDraggingQualityMeter = false;
+    }
+
+    private void EndQualityMeterDrag(IPointer pointer)
+    {
+        _isDraggingQualityMeter = false;
+        pointer.Capture(null);
+    }
+
+    private void UpdateQualityFromPointer(Control control, PointerEventArgs e)
+    {
+        double x = e.GetPosition(control).X;
+        double width = control.Bounds.Width;
+        if (width > 0)
+        {
+            double ratio = Math.Clamp(x / width, 0.0, 1.0);
+            int quality = Math.Clamp((int)Math.Round(ratio * 100), 1, 100);
+            if (DataContext is MainViewModel vm)
+            {
+                vm.Quality = quality;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 在 Windows 11 上为无装饰窗口恢复圆角。
+    /// </summary>
+    private void SetWindowCornerRound()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+        try
+        {
+            var handle = TryGetPlatformHandle();
+            if (handle is null) return;
+            var hwnd = handle.Handle;
+            if (hwnd == IntPtr.Zero) return;
+
+            var preference = 1; // 主窗由 ContinuousBorder 绘制外形，关闭 DWM 圆弧裁切。
+            _ = DwmSetWindowAttribute(hwnd, 33, ref preference, sizeof(int));
+        }
+        catch
+        {
+        }
+    }
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hwnd, int command);
+}

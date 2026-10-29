@@ -1,0 +1,477 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:PsExporter.Controls">
+    <Styles.Resources>
+        <!-- 独立主题，避免 Fluent 滚动条在悬停时展开、预留箭头空间。 -->
+        <ControlTheme x:Key="SubtleScrollPageButton" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+            <Setter Property="Template">
+                <ControlTemplate><Panel Background="Transparent"/></ControlTemplate>
+            </Setter>
+        </ControlTheme>
+        <ControlTheme x:Key="SubtleScrollThumb" TargetType="Thumb">
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Panel Background="Transparent">
+                        <controls:ContinuousBorder Name="ThumbMark" Width="{StaticResource Control.ScrollThumbWidth}"
+                            HorizontalAlignment="Center" CornerRadius="1.5"
+                            Background="{StaticResource Brush.TextMuted}" Opacity="0.28">
+                            <controls:ContinuousBorder.Transitions>
+                                <Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.12"/></Transitions>
+                            </controls:ContinuousBorder.Transitions>
+                        </controls:ContinuousBorder>
+                    </Panel>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ controls|ContinuousBorder#ThumbMark">
+                <Setter Property="Opacity" Value="0.5"/>
+            </Style>
+            <Style Selector="^:pressed /template/ controls|ContinuousBorder#ThumbMark">
+                <Setter Property="Opacity" Value="0.7"/>
+            </Style>
+        </ControlTheme>
+        <ControlTheme x:Key="SubtleVerticalScrollBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="{StaticResource Control.ScrollHitWidth}"/>
+            <Setter Property="MinWidth" Value="{StaticResource Control.ScrollHitWidth}"/>
+            <Setter Property="MaxWidth" Value="{StaticResource Control.ScrollHitWidth}"/>
+            <Setter Property="AllowAutoHide" Value="False"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Panel Background="Transparent">
+                        <Track Name="PART_Track"
+                            Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                            Value="{TemplateBinding Value, Mode=TwoWay}"
+                            ViewportSize="{TemplateBinding ViewportSize}" Orientation="Vertical"
+                            DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                            IsDirectionReversed="True">
+                            <Track.DecreaseButton>
+                                <RepeatButton Name="PART_PageUpButton" Theme="{StaticResource SubtleScrollPageButton}"
+                                    AutomationProperties.Name="向上翻页"/>
+                            </Track.DecreaseButton>
+                            <Track.IncreaseButton>
+                                <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource SubtleScrollPageButton}"
+                                    AutomationProperties.Name="向下翻页"/>
+                            </Track.IncreaseButton>
+                            <Thumb Theme="{StaticResource SubtleScrollThumb}" AutomationProperties.Name="滚动位置"/>
+                        </Track>
+                    </Panel>
+                </ControlTemplate>
+            </Setter>
+        </ControlTheme>
+    </Styles.Resources>
+    <Style Selector="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource Font.Ui}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+    </Style>
+    <Style Selector="Button">
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="Padding" Value="14,0"/>
+        <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Height" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <controls:ContinuousContentPresenter Name="PART_ContinuousPresenter"
+                    Background="{TemplateBinding Background}" Foreground="{TemplateBinding Foreground}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}"
+                    Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+            </ControlTemplate>
+        </Setter>
+
+        <Setter Property="FontFamily" Value="{StaticResource Font.Ui}"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Control}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button TextBlock">
+        <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}"/>
+    </Style>
+
+    <Style Selector="Button:pointerover, Button:pressed">
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.Hover}"/>
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
+    </Style>
+    <Style Selector="Button:disabled">
+        <Setter Property="Opacity" Value="{StaticResource Opacity.Disabled}"/>
+    </Style>
+    <Style Selector="Button.tool">
+        <Setter Property="Height" Value="{StaticResource Control.ToolSize}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.ToolSize}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.ToolSize}"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Width" Value="{StaticResource Control.ToolSize}"/>
+        <Setter Property="Padding" Value="{StaticResource Thickness.None}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource Thickness.None}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.Hover}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+    </Style>
+
+    <Style Selector="Button.mode">
+        <Setter Property="Height" Value="{StaticResource Control.ModeHeight}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.ModeHeight}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.ModeHeight}"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="{StaticResource Thickness.None}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Button.mode controls|ContinuousBorder">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="VerticalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Button.mode:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.Hover}"/>
+    </Style>
+    <Style Selector="Button.mode:disabled">
+        <Setter Property="Opacity" Value="1"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}"/>
+    </Style>
+    <Style Selector="Button.mode:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Opacity" Value="{StaticResource Opacity.Disabled}"/>
+    </Style>
+    <Style Selector="Button.mode:disabled controls|ContinuousBorder.mode-fill">
+        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
+    </Style>
+
+    <Style Selector="Button.seg">
+        <Setter Property="Height" Value="{StaticResource Control.SegmentHeight}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.SegmentHeight}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.SegmentHeight}"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Button.seg controls|ContinuousBorder">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="VerticalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Button.seg:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.Hover}"/>
+    </Style>
+
+    <Style Selector="Button.primary">
+        <Setter Property="Height" Value="{StaticResource Control.PrimaryHeight}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.PrimaryHeight}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.PrimaryHeight}"/>
+        <Setter Property="MinWidth" Value="{StaticResource Control.PrimaryMinWidth}"/>
+        <Setter Property="Padding" Value="{StaticResource Padding.Primary}"/>
+        <Setter Property="Background" Value="{StaticResource Brush.Accent}"/>
+        <Setter Property="Foreground" Value="#FFFFFF"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Control}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource Thickness.None}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.primary TextBlock">
+        <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.AccentHover}"/>
+    </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.AccentPressed}"/>
+    </Style>
+    <Style Selector="Button.primary:pointerover, Button.primary:pressed">
+        <Setter Property="Foreground" Value="{StaticResource Brush.OnAccent}"/>
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContinuousPresenter, Button.primary:pressed /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Foreground" Value="{StaticResource Brush.OnAccent}"/>
+    </Style>
+    <Style Selector="Button.primary:disabled">
+        <Setter Property="Opacity" Value="{StaticResource Opacity.Disabled}"/>
+    </Style>
+
+    <Style Selector="Button.secondary">
+        <Setter Property="Height" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="Padding" Value="{StaticResource Padding.Secondary}"/>
+        <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource Thickness.Thin}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.secondary TextBlock">
+        <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}"/>
+    </Style>
+    <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.Hover}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+    </Style>
+
+    <Style Selector="Button.folder">
+        <Setter Property="Height" Value="{StaticResource Control.FolderSize}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.FolderSize}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.FolderSize}"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Width" Value="{StaticResource Control.FolderSize}"/>
+        <Setter Property="Padding" Value="{StaticResource Thickness.None}"/>
+        <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource Thickness.Thin}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.folder TextBlock">
+        <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}"/>
+    </Style>
+    <Style Selector="Button.folder:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.Hover}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+    </Style>
+
+    <Style Selector="TextBox">
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Height" Value="{StaticResource Control.InputInnerHeight}"/>
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Control}"/>
+        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.TextMuted}"/>
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}"/>
+    </Style>
+
+    <!-- Notched Quality Cell Meter Styles -->
+    <Style Selector="Button.qcell">
+        <Setter Property="Height" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="1.5"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        <Setter Property="Cursor" Value="Arrow"/>
+        <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+        <Setter Property="RenderTransform" Value="scale(1, 1)"/>
+    </Style>
+    <Style Selector="Button.qcell:pointerover">
+        <Setter Property="RenderTransform" Value="scale(1, 1)"/>
+        <Setter Property="ZIndex" Value="10"/>
+    </Style>
+    <Style Selector="Button.qcell:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+
+    <Style Selector="ProgressBar">
+        <Setter Property="Height" Value="4"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.Accent}"/>
+        <Setter Property="Background" Value="{StaticResource Brush.ProgressTrack}"/>
+        <Setter Property="CornerRadius" Value="2"/>
+    </Style>
+
+    <Style Selector="TextBlock.title">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Title}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+    <Style Selector="TextBlock.subtitle">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Subtitle}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+    <Style Selector="TextBlock.label">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Body}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBlock.hint">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Caption}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}"/>
+    </Style>
+    <Style Selector="TextBlock.micro">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Micro}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextFaint}"/>
+    </Style>
+    <Style Selector="TextBlock.icon">
+        <Setter Property="FontFamily" Value="{StaticResource Font.Icon}"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Subtitle}"/>
+    </Style>
+    <Style Selector="TextBlock.mode-label">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Body}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBlock.document">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Body}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+    <Style Selector="Button:focus-visible /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}"/>
+        <Setter Property="BoxShadow" Value="0 0 0 2 #601E65F2"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.input-shell:focus-within">
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}"/>
+    </Style>
+    <Style Selector="ToolTip">
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <controls:ContinuousBorder Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Border}"
+                    BorderThickness="1" CornerRadius="8" Padding="10,6">
+                    <ContentPresenter Name="PART_TipPresenter" Content="{TemplateBinding Content}"
+                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                        Foreground="{StaticResource Brush.TextPrimary}"/>
+                </controls:ContinuousBorder>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="ToolTip TextBlock, ToolTip /template/ TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+    </Style>
+    <Style Selector="ScrollViewer.subtle-scroll /template/ ScrollBar:vertical">
+        <Setter Property="Theme" Value="{StaticResource SubtleVerticalScrollBar}"/>
+    </Style>
+    <Style Selector=":is(controls|ContinuousBorder).choice-track">
+        <Setter Property="Height" Value="{StaticResource Control.TrackHeight}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="Padding" Value="1"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
+    </Style>
+    <Style Selector="controls|AnimatedSegmentTrack">
+        <Setter Property="IndicatorBrush" Value="{StaticResource Brush.Surface}"/>
+        <Setter Property="IndicatorBorderBrush" Value="{StaticResource Brush.Border}"/>
+        <Setter Property="HoverBrush" Value="{StaticResource Brush.Hover}"/>
+    </Style>
+    <!-- 悬停与选中表面均由轨道绘制，按钮绘制层不能遮住移动中的选中块。 -->
+    <Style Selector="Button.seg:pointerover /template/ ContentPresenter#PART_ContinuousPresenter, Button.seg:pressed /template/ ContentPresenter#PART_ContinuousPresenter, Button.mode:pointerover /template/ ContentPresenter#PART_ContinuousPresenter, Button.mode:pressed /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.workspace-heading">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.meta-badge">
+        <Setter Property="Height" Value="{StaticResource Control.BadgeHeight}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Pill}"/>
+        <Setter Property="Padding" Value="8,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <!-- 以 yuSnip 设置窗口的标题栏组为准；不沿用普通图标工具的 28 DIP 尺度。 -->
+    <Style Selector="Button.tool.caption">
+        <Setter Property="Width" Value="{StaticResource Control.CaptionWidth}"/>
+        <Setter Property="MinWidth" Value="{StaticResource Control.CaptionWidth}"/>
+        <Setter Property="MaxWidth" Value="{StaticResource Control.CaptionWidth}"/>
+        <Setter Property="Height" Value="{StaticResource Control.CaptionHeight}"/>
+        <Setter Property="MinHeight" Value="{StaticResource Control.CaptionHeight}"/>
+        <Setter Property="MaxHeight" Value="{StaticResource Control.CaptionHeight}"/>
+        <Setter Property="CornerRadius" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Path.caption-glyph">
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.tool.caption.close:pointerover, Button.tool.caption.close:pressed">
+        <Setter Property="Foreground" Value="{StaticResource Brush.OnAccent}"/>
+    </Style>
+    <Style Selector="Button.tool.caption.close:pointerover /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.CaptionCloseHover}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.OnAccent}"/>
+    </Style>
+    <Style Selector="Button.tool.caption.close:pressed /template/ ContentPresenter#PART_ContinuousPresenter">
+        <Setter Property="Background" Value="{StaticResource Brush.CaptionClosePressed}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.OnAccent}"/>
+    </Style>
+    <Style Selector="TextBlock.meta-label">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Micro}"/>
+        <Setter Property="Height" Value="16"/>
+        <Setter Property="LineHeight" Value="16"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="TextAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.quality-mark">
+        <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+        <Setter Property="RenderTransform" Value="scale(1, 1)"/>
+        <Setter Property="Transitions">
+            <Transitions>
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+                <BrushTransition Property="Background" Duration="0:0:0.16"/>
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Button.qcell.quality-current controls|ContinuousBorder.quality-mark">
+        <Setter Property="RenderTransform" Value="scale(1.03, 1.1)"/>
+    </Style>
+    <Style Selector="Window.quality-motion Button.qcell:pointerover controls|ContinuousBorder.quality-mark">
+        <Setter Property="RenderTransform" Value="scale(1.12, 1.12)"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.settings-card">
+        <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Md}"/>
+        <Setter Property="Padding" Value="16"/>
+    </Style>
+    <Style Selector="TextBlock.setting-card-title">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TextBlock.setting-label">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="Medium"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style Selector="TextBlock.setting-description">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="LineHeight" Value="18"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+</Styles>

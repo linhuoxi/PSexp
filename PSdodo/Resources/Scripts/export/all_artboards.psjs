@@ -1,0 +1,33 @@
+// 导出全部画板（UXP 版）
+// 原理：PS 的 exportDocumentAsFileTypePressed 会自动按画板拆分输出多个文件
+// 占位符: {{EXPORT_PATH}} {{FORMAT}} {{QUALITY}} {{RENAME}}
+const { app, core, action } = require("photoshop");
+const { batchPlay } = action;
+
+async function exportAllArtboards() {
+    const exportPath = "{{EXPORT_PATH}}";
+    const format = "{{FORMAT}}".toLowerCase();
+    const quality = {{QUALITY}};
+
+    const d = {
+        _options: { dialogOptions: "dontDisplay" },
+        _obj: "exportDocumentAsFileTypePressed",
+        null: {
+            _ref: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }]
+        },
+        fileType: format,
+        quality: quality,
+        metadata: 0,
+        destFolder: exportPath,
+        sRGB: true,
+        openWindow: false
+    };
+
+    const result = await batchPlay([d], {});
+    if (result.some(item => item._obj === "error")) throw new Error(result.find(item => item._obj === "error").message || "Photoshop 导出失败");
+}
+
+async function runExport() {
+    if (app.documents.length === 0) throw new Error("没有打开的文档");
+    await core.executeAsModal(exportAllArtboards, { commandName: "Export All Artboards" });
+}

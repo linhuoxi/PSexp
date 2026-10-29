@@ -1,0 +1,20 @@
+// 包装快速/画板脚本，将结果交给软件展示，不创建 Photoshop 提示窗。
+{{SCRIPT_BODY}}
+const taskFs = require("uxp").storage.localFileSystem;
+const taskState = { done: false, success: false, files: [], error: "" };
+const taskFolder = await taskFs.getEntryWithUrl("{{RESULT_FOLDER_URL}}");
+const taskFile = await taskFolder.createFile("result.json", { overwrite: true });
+await taskFile.write(JSON.stringify(taskState));
+try {
+    await runExport();
+    const outputFolder = await taskFs.getEntryWithUrl("{{EXPORT_FOLDER_URL}}");
+    const entries = await outputFolder.getEntries();
+    taskState.files = entries.filter(entry => entry.isFile && /\.(png|jpg)$/i.test(entry.name)).map(entry => entry.name);
+    if (!taskState.files.length) throw new Error("Photoshop 未生成目标图片");
+    taskState.success = true;
+} catch (error) {
+    taskState.error = String(error);
+} finally {
+    taskState.done = true;
+    await taskFile.write(JSON.stringify(taskState));
+}

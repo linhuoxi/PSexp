@@ -1,0 +1,134 @@
+// 执行真实嵌入脚本，模拟 UXP DOM 和存储；不能替代 Photoshop 实机验收。
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+const template = fs.readFileSync(path.join(__dirname, "../../PSdodo/Resources/Scripts/export/layer_batch.psjs"), "utf8");
+
+async function run(options = {}) {
+    const layers = options.layers || [
+        { id: 1, name: "首层", visible: true },
+        { id: 2, name: "次层", visible: true },
+        { id: 3, name: "隐藏层", visible: false },
+        { id: 4, name: "排除覆盖", visible: true },
+        { id: 5, name: "背景", visible: true, isBackgroundLayer: true }
+    ];
+    const original = layers.map(layer => layer.visible);
+    const entries = new Set(options.existing || []);
+    const saves = [], reports = [], alerts = [];
+    const folder = {
+        async getEntries() { return [...entries].map(name => ({ name })); },
+        async createFile(name, { overwrite }) {
+            if (!overwrite && entries.has(name)) throw new Error("file exists");
+            entries.add(name);
+            return { name };
+        }
+    };
+    const doc = { name: "设计.psd", layers, saveAs: {} };
+    for (const format of ["png", "jpg"]) doc.saveAs[format] = async (entry, settings, asCopy) => {
+        assert.equal(asCopy, true);
+        if (options.failAt === saves.length + 1) throw new Error("save failed");
+        saves.push({ name: entry.name, format, settings, visible: layers.filter(layer => layer.visible).map(layer => layer.name) });
+    };
+    const ps = {
+        app: { documents: options.noDocument ? [] : [doc], activeDocument: doc },
+        core: {
+            async executeAsModal(fn) { await fn({ isCancelled: !!options.cancel }); },
+            async showAlert(message) { alerts.push(message); }
+        }
+    };
+    const storage = { localFileSystem: {
+        async getEntryWithUrl(url) {
+            if (url === "file:/task") return { async createFile() { return {
+                async write(json) {
+                    const state = JSON.parse(json);
+                    if (state.done) assert.deepEqual(layers.map(layer => layer.visible), original);
+                    reports.push(state);
+                }
+            }; } };
+            assert.equal(url, "file:/output");
+            return folder;
+        }
+    } };
+    const args = {
+        SLICE_MODE: String(!!options.slices), EXPORT_FOLDER_URL: "file:/output", RESULT_FOLDER_URL: "file:/task",
+        FORMAT: options.format || "png", QUALITY: String(options.quality || 80), RENAME: String(options.rename !== false),
+        IMAGE_NAME: options.imageName || "", FILE_NAME: "export", WITH_DOC_NAME: "true", SHOW_HINT: String(!!options.hint)
+    };
+    const script = template.replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => args[key]);
+    assert.ok(!script.includes("{{"));
+    const context = vm.createContext({ require(name) {
+        if (name === "photoshop") return ps;
+        if (name === "uxp") return { storage };
+        throw new Error("Unexpected module " + name);
+    } });
+    await new vm.Script("(async () => {\n" + script + "\n})()").runInContext(context);
+    assert.deepEqual(layers.map(layer => layer.visible), original);
+    return { saves, reports, result: reports.at(-1), alerts };
+}
+
+(async () => {
+    const tests = {
+        async "all initially visible layers are numbered, hidden and excluded layers skipped"() {
+            const { saves, result } = await run({ slices: true });
+            assert.deepEqual(saves.map(save => save.name), ["export_0.png", "export_1.png", "export_2.png"]);
+            assert.ok(saves.every(save => save.visible.length === 1));
+            assert.equal(result.success, true);
+        },
+        async "top-level mode exports hidden targets and keeps background and excluded overlays"() {
+            const { saves, result } = await run();
+            assert.deepEqual(saves.map(save => save.name), ["设计_首层.png", "设计_次层.png", "设计_隐藏层.png"]);
+            assert.deepEqual(saves[1].visible, ["次层", "排除覆盖", "背景"]);
+            assert.equal(result.success, true);
+        },
+        async "JPG quality is converted to 0-12 and custom prefix is preserved"() {
+            const { saves } = await run({ format: "jpg", quality: 75, imageName: "自定义" });
+            assert.equal(saves[0].settings.quality, 9);
+            assert.equal(saves[0].name, "自定义_首层.jpg");
+        },
+        async "case-insensitive file conflicts receive suffix"() {
+            const { saves } = await run({ slices: true, existing: ["EXPORT_0.PNG", "export_0_1.png"] });
+            assert.equal(saves[0].name, "export_0_2.png");
+        },
+        async "overwrite keeps requested name"() {
+            const { saves } = await run({ slices: true, rename: false, existing: ["export_0.png"] });
+            assert.equal(saves[0].name, "export_0.png");
+        },
+        async "same layer names overwrite one final file without duplicate receipts"() {
+            const { saves, result } = await run({ rename: false, layers: [
+                { id: 1, name: "同名", visible: true }, { id: 2, name: "同名", visible: true }
+            ] });
+            assert.equal(saves.length, 2);
+            assert.deepEqual(result.files, ["设计_同名.png"]);
+            assert.equal(result.success, true);
+        },
+        async "failed save retains completed files and restores visibility"() {
+            const { result } = await run({ failAt: 2 });
+            assert.equal(result.success, false);
+            assert.deepEqual(result.files, ["设计_首层.png"]);
+            assert.match(result.error, /save failed/);
+        },
+        async "empty document returns explicit failure"() {
+            const { result } = await run({ noDocument: true });
+            assert.equal(result.success, false);
+            assert.equal(result.files.length, 0);
+        },
+        async "no eligible targets returns failure"() {
+            const { result } = await run({ slices: true, layers: [{ id: 1, name: "隐藏", visible: false }] });
+            assert.equal(result.success, false);
+        },
+        async "Photoshop cancellation returns failure and restores layers"() {
+            const { result } = await run({ cancel: true });
+            assert.equal(result.success, false);
+            assert.match(result.error, /取消/);
+        },
+        async "legacy hint setting never creates Photoshop dialogs"() {
+            const { reports, alerts } = await run({ hint: true });
+            assert.equal(reports.at(-1).done, true);
+            assert.equal(alerts.length, 0);
+            assert.ok(reports.slice(0, -1).every(report => !report.done));
+        }
+    };
+    for (const [name, test] of Object.entries(tests)) { await test(); console.log("PASS " + name); }
+    console.log(Object.keys(tests).length + " UXP script behavior tests passed.");
+})().catch(error => { console.error(error); process.exitCode = 1; });

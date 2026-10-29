@@ -1,0 +1,70 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using PsExporter.Core.PsConnection;
+using PsExporter.Core.Process;
+using PsExporter.Core.Scripting;
+using PsExporter.Models;
+
+namespace PsExporter.Services;
+
+public sealed class PhotoshopService : IPhotoshopService
+{
+    private readonly IPsBridge _bridge;
+    private readonly IPhotoshopDetector _detector;
+
+    public PhotoshopService(IPsBridge bridge, IPhotoshopDetector detector)
+    {
+        _bridge = bridge;
+        _detector = detector;
+    }
+
+    public bool IsBridgeAvailable => _bridge.IsAvailable;
+
+    public PhotoshopProcessInfo DetectProcess() => _detector.Detect();
+
+    public Task<bool> TryLaunchAsync(string? explicitPath, CancellationToken ct = default)
+        => _detector.TryLaunchAsync(explicitPath, ct);
+
+    public async Task<PsDocumentInfo> GetDocumentInfoAsync(CancellationToken ct = default)
+    {
+        var (doc, _) = await ProbeDocumentInfoAsync(ct);
+        return doc;
+    }
+
+    public async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoAsync(CancellationToken ct = default)
+    {
+        var res = await ExecuteScriptAsync(ScriptNames.ProbeDocumentInfo, EmptyArgs, ct);
+        if (!res.Success)
+            return (PsDocumentInfo.Empty, res);
+        var doc = PsDocumentInfo.Parse(res.ReturnValue) ?? PsDocumentInfo.Empty;
+        return (doc, res);
+    }
+
+    public async Task<List<ArtboardInfo>> ListArtboardsAsync(CancellationToken ct = default)
+    {
+        var res = await ExecuteScriptAsync(ScriptNames.ProbeListArtboards, EmptyArgs, ct);
+        if (!res.Success) return new List<ArtboardInfo>();
+        return ArtboardInfo.ParseList(res.ReturnValue);
+    }
+
+    public async Task<PsBridgeResult> ExecuteScriptAsync(
+        string scriptName, IReadOnlyDictionary<string, string> args, CancellationToken ct = default)
+    {
+        var template = ScriptLibrary.GetScript(scriptName);
+        var script = ScriptParameterInjector.Inject(template, args);
+        var logPath = Path.Combine(Path.GetTempPath(), $"psx_{System.Guid.NewGuid():N}.log");
+        try
+        {
+            return await _bridge.ExecuteAsync(script, logPath, ct);
+        }
+        catch (PsNotConnectedException ex)
+        {
+            return new PsBridgeResult { Success = false, Error = ex, ReturnValue = string.Empty, Logs = [] };
+        }
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyArgs =
+        new Dictionary<string, string>();
+}

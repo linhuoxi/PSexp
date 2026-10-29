@@ -1,0 +1,124 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Light Mode Rigorous & Avant-Garde Palette (#F5F5F5 + #6A6FFE + #8B5CF6 + #FE6464 + #FFFFFF) -->
+    <Color x:Key="Color.Canvas">#F4F5FA</Color>
+    <Color x:Key="Color.Surface">#FFFFFF</Color>
+    <Color x:Key="Color.SurfaceSubtle">#F8F9FD</Color>
+    <Color x:Key="Color.SurfaceElevated">#FFFFFF</Color>
+    <Color x:Key="Color.Border">#E2E4F0</Color>
+    <Color x:Key="Color.Divider">#ECEEF6</Color>
+
+    <Color x:Key="Color.TextPrimary">#141527</Color>
+    <Color x:Key="Color.TextSecondary">#5C5F79</Color>
+    <Color x:Key="Color.TextMuted">#73788A</Color>
+    <Color x:Key="Color.TextFaint">#74798B</Color>
+
+    <!-- Blue Accent Palette -->
+    <Color x:Key="Color.Accent">#1E65F2</Color>
+    <Color x:Key="Color.AccentGlow">#4B84F5</Color>
+    <Color x:Key="Color.AccentHover">#1857D6</Color>
+    <Color x:Key="Color.AccentPressed">#1247B8</Color>
+    <Color x:Key="Color.Hover">#EDF4FF</Color>
+    <Color x:Key="Color.StatusSurface">#EAF2FF</Color>
+    <Color x:Key="Color.StatusBorder">#C5D8FF</Color>
+    <Color x:Key="Color.StatusText">#1E65F2</Color>
+    <Color x:Key="Color.Success">#10B981</Color>
+    <Color x:Key="Color.Warning">#F59E0B</Color>
+    <Color x:Key="Color.Danger">#FE6464</Color>
+    <Color x:Key="Color.Info">#1E65F2</Color>
+    <Color x:Key="Color.Debug">#73788A</Color>
+    <Color x:Key="Color.ProgressTrack">#EAEAFA</Color>
+
+    <SolidColorBrush x:Key="Brush.Canvas" Color="{StaticResource Color.Canvas}"/>
+    <SolidColorBrush x:Key="Brush.Surface" Color="{StaticResource Color.Surface}"/>
+    <SolidColorBrush x:Key="Brush.SurfaceSubtle" Color="{StaticResource Color.SurfaceSubtle}"/>
+    <SolidColorBrush x:Key="Brush.Border" Color="{StaticResource Color.Border}"/>
+    <SolidColorBrush x:Key="Brush.Divider" Color="{StaticResource Color.Divider}"/>
+    <SolidColorBrush x:Key="Brush.TextPrimary" Color="{StaticResource Color.TextPrimary}"/>
+    <SolidColorBrush x:Key="Brush.TextSecondary" Color="{StaticResource Color.TextSecondary}"/>
+    <SolidColorBrush x:Key="Brush.TextMuted" Color="{StaticResource Color.TextMuted}"/>
+    <SolidColorBrush x:Key="Brush.TextFaint" Color="{StaticResource Color.TextFaint}"/>
+    <SolidColorBrush x:Key="Brush.Accent" Color="{StaticResource Color.Accent}"/>
+    <SolidColorBrush x:Key="Brush.AccentHover" Color="{StaticResource Color.AccentHover}"/>
+    <SolidColorBrush x:Key="Brush.AccentPressed" Color="{StaticResource Color.AccentPressed}"/>
+    <SolidColorBrush x:Key="Brush.Hover" Color="{StaticResource Color.Hover}"/>
+    <SolidColorBrush x:Key="Brush.StatusSurface" Color="{StaticResource Color.StatusSurface}"/>
+    <SolidColorBrush x:Key="Brush.StatusBorder" Color="{StaticResource Color.StatusBorder}"/>
+    <SolidColorBrush x:Key="Brush.StatusText" Color="{StaticResource Color.StatusText}"/>
+    <SolidColorBrush x:Key="Brush.Success" Color="{StaticResource Color.Success}"/>
+    <SolidColorBrush x:Key="Brush.Warning" Color="{StaticResource Color.Warning}"/>
+    <SolidColorBrush x:Key="Brush.Danger" Color="{StaticResource Color.Danger}"/>
+    <SolidColorBrush x:Key="Brush.Info" Color="{StaticResource Color.Info}"/>
+    <SolidColorBrush x:Key="Brush.Debug" Color="{StaticResource Color.Debug}"/>
+    <SolidColorBrush x:Key="Brush.ProgressTrack" Color="{StaticResource Color.ProgressTrack}"/>
+
+    <!-- Geometry -->
+    <x:Double x:Key="Space.Xs">4</x:Double>
+    <x:Double x:Key="Space.Sm">8</x:Double>
+    <x:Double x:Key="Space.Md">12</x:Double>
+    <x:Double x:Key="Space.Lg">16</x:Double>
+    <x:Double x:Key="Space.Xl">20</x:Double>
+
+    <Thickness x:Key="Padding.Header">16,12</Thickness>
+    <Thickness x:Key="Padding.Context">16,10</Thickness>
+    <Thickness x:Key="Padding.Modes">16,6</Thickness>
+    <Thickness x:Key="Padding.Workspace">16,12,16,16</Thickness>
+    <Thickness x:Key="Padding.Panel">14</Thickness>
+    <Thickness x:Key="Padding.Control">10,0</Thickness>
+    <Thickness x:Key="Padding.Primary">16,0</Thickness>
+    <Thickness x:Key="Padding.Secondary">12,0</Thickness>
+    <Thickness x:Key="Thickness.Thin">1</Thickness>
+    <Thickness x:Key="Thickness.None">0</Thickness>
+
+    <!-- Sleek Curves & Pill Radius -->
+    <CornerRadius x:Key="Radius.Sm">12</CornerRadius>
+    <CornerRadius x:Key="Radius.Md">20</CornerRadius>
+    <CornerRadius x:Key="Radius.Lg">28</CornerRadius>
+    <CornerRadius x:Key="Radius.Pill">12</CornerRadius>
+
+    <CornerRadius x:Key="Radius.SegmentInner">10</CornerRadius>
+
+    <x:Double x:Key="Control.StandardHeight">32</x:Double>
+    <x:Double x:Key="Control.SegmentHeight">28</x:Double>
+    <x:Double x:Key="Control.TrackHeight">32</x:Double>
+    <x:Double x:Key="Control.BadgeHeight">24</x:Double>
+    <x:Double x:Key="Control.QualityMarkHeight">20</x:Double>
+    <x:Double x:Key="Control.ScrollHitWidth">8</x:Double>
+    <x:Double x:Key="Control.ScrollThumbWidth">3</x:Double>
+
+    <!-- Typography -->
+    <FontFamily x:Key="Font.Ui">Microsoft YaHei UI, Segoe UI, Inter</FontFamily>
+    <FontFamily x:Key="Font.Icon">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <x:String x:Key="Icon.Refresh">&#xE72C;</x:String>
+    <x:String x:Key="Icon.Pin">&#xE718;</x:String>
+    <x:String x:Key="Icon.Settings">&#xE713;</x:String>
+    <x:String x:Key="Icon.Minimize">&#xE921;</x:String>
+    <x:String x:Key="Icon.Close">&#xE8BB;</x:String>
+    <x:String x:Key="Icon.Folder">&#xE8B7;</x:String>
+    <x:String x:Key="Icon.Play">&#xE768;</x:String>
+    <x:String x:Key="Icon.Stop">&#xE71A;</x:String>
+    <x:Double x:Key="FontSize.Micro">11</x:Double>
+    <x:Double x:Key="FontSize.Caption">12</x:Double>
+    <x:Double x:Key="FontSize.Body">13</x:Double>
+    <x:Double x:Key="FontSize.Control">13.5</x:Double>
+    <x:Double x:Key="FontSize.Subtitle">14</x:Double>
+    <x:Double x:Key="FontSize.Title">16</x:Double>
+
+    <!-- Control dimensions -->
+    <x:Double x:Key="Control.ToolSize">28</x:Double>
+    <x:Double x:Key="Control.CaptionWidth">44</x:Double>
+    <x:Double x:Key="Control.CaptionHeight">36</x:Double>
+    <SolidColorBrush x:Key="Brush.CaptionCloseHover" Color="#E81123"/>
+    <SolidColorBrush x:Key="Brush.CaptionClosePressed" Color="#C50F1F"/>
+    <SolidColorBrush x:Key="Brush.OnAccent" Color="#FFFFFF"/>
+    <x:Double x:Key="Control.InputHeight">32</x:Double>
+    <x:Double x:Key="Control.InputInnerHeight">30</x:Double>
+    <x:Double x:Key="Control.ModeHeight">28</x:Double>
+    <x:Double x:Key="Control.PrimaryHeight">36</x:Double>
+    <x:Double x:Key="Control.PrimaryMinWidth">120</x:Double>
+    <x:Double x:Key="Control.FolderSize">32</x:Double>
+    <x:Double x:Key="Control.LogoSize">26</x:Double>
+    <x:Double x:Key="Indicator.Dot">14</x:Double>
+    <x:Double x:Key="Indicator.Separator">4</x:Double>
+    <x:Double x:Key="Opacity.Disabled">0.45</x:Double>
+</ResourceDictionary>

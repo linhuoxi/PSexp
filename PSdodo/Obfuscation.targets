@@ -1,0 +1,90 @@
+<Project>
+  <PropertyGroup>
+    <ObfuscationToolManifest>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '..', 'dotnet-tools.json'))</ObfuscationToolManifest>
+    <!-- BAT 会传入 TEMP 下的绝对目录；手动发布时也必须以项目目录为基准解析，不能依赖进程当前目录。 -->
+    <ObfuscationRoot Condition="'$(ObfuscationRoot)' == ''">$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'obfuscation'))\</ObfuscationRoot>
+  </PropertyGroup>
+
+  <Target Name="ObfuscateBeforeSingleFileBundle"
+          BeforeTargets="GenerateSingleFileBundle"
+          DependsOnTargets="PrepareForBundle"
+          Condition="'$(EnableReleaseObfuscation)' == 'true' and '$(PublishSingleFile)' == 'true' and '$(PublishAot)' != 'true'">
+    <PropertyGroup>
+      <_EffectiveObfuscationRoot>$([MSBuild]::EnsureTrailingSlash('$(ObfuscationRoot)'))</_EffectiveObfuscationRoot>
+      <ObfuscationInput>$(_EffectiveObfuscationRoot)input\</ObfuscationInput>
+      <ObfuscationOutput>$(_EffectiveObfuscationRoot)output\</ObfuscationOutput>
+      <ObfuscationConfig>$(_EffectiveObfuscationRoot)obfuscar.xml</ObfuscationConfig>
+      <ObfuscationLog>$(ObfuscationOutput)obfuscar-map.xml</ObfuscationLog>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_ApplicationAssembly Include="@(FilesToBundle)"
+                            Condition="'%(FilesToBundle.Filename)%(FilesToBundle.Extension)' == '$(AssemblyName).dll'" />
+      <!-- 非裁剪发布时部分依赖仍位于 NuGet 缓存；复制所有待打包 DLL 供 Obfuscar 解析，但只混淆业务程序集。 -->
+      <_ObfuscationDependency Include="@(FilesToBundle)"
+                              Condition="'%(FilesToBundle.Extension)' == '.dll'" />
+      <_ObfuscationDependency Include="@(ResolvedFileToPublish)"
+                              Condition="'%(ResolvedFileToPublish.Extension)' == '.dll'" />
+      <_ObfuscationDependency Include="@(ReferenceCopyLocalPaths)"
+                              Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.dll'" />
+      <_ObfuscationDependency Include="$(TargetDir)*.dll" />
+    </ItemGroup>
+
+    <Error Condition="'@(_ApplicationAssembly)' == ''"
+           Text="混淆失败：单文件输入中找不到 $(AssemblyName).dll。" />
+
+    <RemoveDir Directories="$(ObfuscationInput);$(ObfuscationOutput)" />
+    <MakeDir Directories="$(ObfuscationInput);$(ObfuscationOutput)" />
+    <Copy SourceFiles="@(_ObfuscationDependency)" DestinationFolder="$(ObfuscationInput)" SkipUnchangedFiles="true" />
+
+    <ItemGroup>
+      <_ObfuscarConfigLines Include="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;" />
+      <_ObfuscarConfigLines Include="&lt;Obfuscator&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;InPath&quot; value=&quot;$(ObfuscationInput)&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;OutPath&quot; value=&quot;$(ObfuscationOutput)&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;LogFile&quot; value=&quot;$(ObfuscationLog)&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;KeepPublicApi&quot; value=&quot;true&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;HidePrivateApi&quot; value=&quot;true&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;RenameProperties&quot; value=&quot;false&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;RenameEvents&quot; value=&quot;false&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;RenameFields&quot; value=&quot;false&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;HideStrings&quot; value=&quot;true&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;ReuseNames&quot; value=&quot;true&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;SkipGenerated&quot; value=&quot;true&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Var name=&quot;SkipSpecialName&quot; value=&quot;true&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;Module file=&quot;$(ObfuscationInput)$(AssemblyName).dll&quot;&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipType name=&quot;PsExporter.ViewLocator&quot; skipMethods=&quot;true&quot; skipFields=&quot;true&quot; skipProperties=&quot;true&quot; skipEvents=&quot;true&quot; skipStringHiding=&quot;true&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.*&quot; name=&quot;DwmSetWindowAttribute&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;SetWindowLongPtr&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;GetWindowLongPtr&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;CallWindowProc&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;GetCursorPos&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;timeBeginPeriod&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;timeEndPeriod&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;SetForegroundWindow&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="    &lt;SkipMethod type=&quot;PsExporter.Views.MainWindow&quot; name=&quot;ShowWindow&quot; /&gt;" />
+      <_ObfuscarConfigLines Include="  &lt;/Module&gt;" />
+      <_ObfuscarConfigLines Include="&lt;/Obfuscator&gt;" />
+    </ItemGroup>
+
+    <WriteLinesToFile File="$(ObfuscationConfig)"
+                      Lines="@(_ObfuscarConfigLines)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+
+    <Message Importance="high" Text="正在混淆应用程序集：$(AssemblyName).dll" />
+    <Exec Command="dotnet tool run obfuscar.console -- -v:m &quot;$(ObfuscationConfig)&quot;"
+          WorkingDirectory="$([System.IO.Path]::GetDirectoryName('$(ObfuscationToolManifest)'))" />
+    <Error Condition="!Exists('$(ObfuscationOutput)$(AssemblyName).dll')"
+           Text="混淆失败：未生成 $(ObfuscationOutput)$(AssemblyName).dll。" />
+
+    <ItemGroup>
+      <FilesToBundle Remove="@(_ApplicationAssembly)" />
+      <FilesToBundle Include="$(ObfuscationOutput)$(AssemblyName).dll">
+        <RelativePath>$(AssemblyName).dll</RelativePath>
+      </FilesToBundle>
+    </ItemGroup>
+
+    <Message Importance="high" Text="混淆完成，已将混淆程序集加入单文件发布。" />
+  </Target>
+</Project>

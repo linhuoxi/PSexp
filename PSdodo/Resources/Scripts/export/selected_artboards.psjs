@@ -1,0 +1,35 @@
+// 导出 PS 当前选中的图层/画板（UXP 版）
+// 原理：尊重用户在 PS 里的当前选择，调用 exportSelectionAsFileTypePressed
+// 占位符: {{EXPORT_PATH}} {{FORMAT}} {{QUALITY}} {{RENAME}}
+const { app, core, action } = require("photoshop");
+const { batchPlay } = action;
+
+async function exportSelectedArtboards() {
+    const exportPath = "{{EXPORT_PATH}}";
+    const format = "{{FORMAT}}".toLowerCase();
+    let quality = {{QUALITY}};
+    // PNG 固定用 32（与原版"选择画板导出PNG.js"一致）
+    if (format === "png") quality = 32;
+
+    const d = {
+        _options: { dialogOptions: "dontDisplay" },
+        _obj: "exportSelectionAsFileTypePressed",
+        null: {
+            _ref: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }]
+        },
+        fileType: format,
+        quality: quality,
+        metadata: 0,
+        destFolder: exportPath,
+        sRGB: true,
+        openWindow: false
+    };
+
+    const result = await batchPlay([d], {});
+    if (result.some(item => item._obj === "error")) throw new Error(result.find(item => item._obj === "error").message || "Photoshop 导出失败");
+}
+
+async function runExport() {
+    if (app.documents.length === 0) throw new Error("没有打开的文档");
+    await core.executeAsModal(exportSelectedArtboards, { commandName: "Export Selection" });
+}
