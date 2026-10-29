@@ -1,0 +1,149 @@
+// 按 Photoshop 原生用户切片的边界导出当前合成画面；不会遍历图层充当切片。
+const { app, core, action } = require("photoshop");
+const fs = require("uxp").storage.localFileSystem;
+const exportFolderUrl = "{{EXPORT_FOLDER_URL}}";
+const resultFolderUrl = "{{RESULT_FOLDER_URL}}";
+const format = "{{FORMAT}}".toLowerCase();
+const quality = {{QUALITY}};
+const rename = {{RENAME}};
+const fileName = "{{FILE_NAME}}";
+const state = { done: false, success: false, files: [], error: "", slices: [] };
+let resultFile;
+let stage = "创建切片任务回执";
+let activePath = resultFolderUrl;
+function safeName(value) {
+    return String(value).replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/[. ]+$/, "") || "slice";
+}
+async function report() {
+    state.stage = stage;
+    state.path = activePath;
+    await resultFile.write(JSON.stringify(state));
+}
+async function exportSlices(context) {
+    if (!app.documents.length) throw new Error("没有打开的文档");
+    const source = app.activeDocument;
+    stage = "读取 Photoshop 原生切片";
+    const response = await action.batchPlay([{
+        _obj: "get", _target: [{ _property: "slices" }, { _ref: "document", _id: source.id }]
+    }], {});
+    if (response.some(item => item._obj === "error")) throw new Error(response[0].message || "无法读取原生切片");
+    const descriptor = response[0] && response[0].slices;
+    const slices = (descriptor && descriptor.slices || []).filter(slice =>
+        slice.origin && ["userGenerated", "layerGenerated"].includes(slice.origin._value) &&
+        (!slice.type || slice.type._value === "image") && slice.bounds &&
+        slice.bounds.right > slice.bounds.left && slice.bounds.bottom > slice.bounds.top
+    ).sort((a, b) => a.bounds.top - b.bounds.top || a.bounds.left - b.bounds.left || a.sliceID - b.sliceID);
+    if (!slices.length) throw new Error("没有可导出的原生用户切片，请先用 Photoshop 切片工具或“基于参考线新建切片”划分切片");
+    state.slices = slices.map(slice => ({ id: slice.sliceID, name: slice.name || "", bounds: slice.bounds }));
+    stage = "读取切片输出目录";
+    activePath = exportFolderUrl;
+    const folder = await fs.getEntryWithUrl(exportFolderUrl);
+    const existing = new Set((await folder.getEntries()).map(entry => entry.name.toLowerCase()));
+    await report();
+    if (context.isCancelled) throw new Error("Photoshop 已取消切片导出");
+    let copy;
+    let autoCloseRegistered = false;
+    let failure;
+    try {
+        stage = "创建可复用的切片临时画布";
+        activePath = exportFolderUrl;
+        // 整批只复制一次。后续切片只在此副本上裁剪和回滚，不再开关文档。
+        copy = await source.duplicate("PSexp slices", true);
+        if (typeof context.hostControl.registerAutoCloseDocument === "function") {
+            // Photoshop 取消模态任务后会拒绝新的文档操作，交由宿主兜底关闭。
+            await context.hostControl.registerAutoCloseDocument(copy.id);
+            autoCloseRegistered = true;
+        }
+        const canvasWidth = copy.width;
+        const canvasHeight = copy.height;
+        state.temporaryDocumentId = copy.id;
+        state.reusesTemporaryDocument = true;
+        await report();
+        for (let index = 0; index < slices.length; index++) {
+            if (context.isCancelled) throw new Error("Photoshop 已取消切片导出");
+            const slice = slices[index];
+            const stem = safeName(fileName) + "_" + (slice.name ? safeName(slice.name) : String(index + 1).padStart(2, "0"));
+            let name = stem + "." + format;
+            if (rename) {
+                let suffix = 1;
+                while (existing.has(name.toLowerCase())) name = stem + "_" + suffix++ + "." + format;
+            }
+            activePath = exportFolderUrl + "/" + name;
+            stage = "检查临时画布复原状态";
+            if (copy.width !== canvasWidth || copy.height !== canvasHeight)
+                throw new Error("临时画布未恢复到完整尺寸，已停止导出以避免后续切片错位");
+            stage = "保存切片裁剪前状态";
+            const suspension = await context.hostControl.suspendHistory({
+                documentID: copy.id, name: "PSexp slice " + slice.sliceID
+            });
+            let sliceFailure;
+            try {
+                stage = "裁剪原生切片范围";
+                await copy.crop({ left: slice.bounds.left, top: slice.bounds.top,
+                    right: slice.bounds.right, bottom: slice.bounds.bottom });
+                stage = "创建切片输出文件";
+                const entry = await folder.createFile(name, { overwrite: !rename });
+                stage = "保存原生切片 " + format.toUpperCase();
+                if (format === "png") await copy.saveAs.png(entry, {}, true);
+                else if (format === "jpg") await copy.saveAs.jpg(entry, { quality: Math.round(12 * quality / 100) }, true);
+                else throw new Error("不支持的导出格式: " + format);
+                existing.add(name.toLowerCase());
+                if (!state.files.some(file => file.toLowerCase() === name.toLowerCase())) state.files.push(name);
+            } catch (error) {
+                sliceFailure = error;
+            } finally {
+                // 回滚本片的裁剪及保存引起的文档改动；不撤销已写到磁盘的图片。
+                // 不累计裁剪历史，下一片始终使用原始完整画布坐标。
+                if (!context.isCancelled) {
+                    const previousStage = stage;
+                    stage = "恢复完整临时画布";
+                    try {
+                        await context.hostControl.resumeHistory(suspension, false);
+                        stage = previousStage;
+                    } catch (restoreError) {
+                        sliceFailure = new Error((sliceFailure ? String(sliceFailure) + "; " : "") +
+                            "恢复临时画布失败: " + String(restoreError));
+                    }
+                }
+            }
+            if (sliceFailure) throw sliceFailure;
+            if (context.isCancelled) throw new Error("Photoshop 已取消切片导出");
+            stage = "写入切片导出进度";
+            await report();
+        }
+    } catch (error) {
+        failure = error;
+    } finally {
+        // 注册成功时，副本会在本次模态任务退出时仅关闭一次（取消时同样生效）。
+        // 旧宿主没有自动关闭 API 时，保留显式关闭作为兼容路径。
+        if (copy) {
+            try {
+                if (!autoCloseRegistered) await copy.closeWithoutSaving();
+                if (!context.isCancelled) app.activeDocument = source;
+            } catch (cleanupError) {
+                if (!autoCloseRegistered) {
+                    if (!failure) stage = "关闭切片临时画布";
+                    failure = new Error((failure ? String(failure) + "; " : "") +
+                        "关闭临时画布失败: " + String(cleanupError));
+                } else {
+                    state.cleanupWarning = "切回原文档失败，临时副本交由 Photoshop 关闭: " + String(cleanupError);
+                }
+            }
+        }
+    }
+    if (failure) throw failure;
+}
+try {
+    const resultFolder = await fs.getEntryWithUrl(resultFolderUrl);
+    resultFile = await resultFolder.createFile("result.json", { overwrite: true });
+    await report();
+    await core.executeAsModal(exportSlices, { commandName: "Export Native Slices" });
+    state.success = true;
+} catch (error) {
+    state.error = stage + " [" + activePath + "]：" + String(error);
+    state.stack = error && error.stack ? String(error.stack) : "";
+} finally {
+    state.done = true;
+    if (resultFile) await report();
+    else console.error("无法创建切片任务回执: " + state.error);
+}

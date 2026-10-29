@@ -44,6 +44,7 @@ public partial class MainViewModel : ViewModelBase
         Quality = s.DefaultQuality;
         AutoRename = s.DefaultAutoRename;
         LayerExportWithDocName = s.LayerExportWithDocName;
+        LayerExportRecursive = s.LayerExportRecursive;
         LayerExportShowHint = s.LayerExportShowHint;
         EnableBlankDrag = s.EnableBlankDrag;
         EnableQualityHoverAnimation = s.EnableQualityHoverAnimation;
@@ -182,6 +183,18 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>切片文件前缀输入是否可见</summary>
     public bool IsFileNameVisible => SelectedMode == ExportMode.Slices;
+    public bool IsLayerMode => SelectedMode == ExportMode.Layers;
+    [ObservableProperty] private bool _layerExportRecursive;
+    public string LayerModeHint => LayerExportRecursive
+        ? "递归导出组内图层，不重复导出图层组。"
+        : "仅导出最外层图层，图层组作为一张图片。";
+    partial void OnLayerExportRecursiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(LayerModeHint));
+        SaveBehaviorSettings();
+    }
+    [RelayCommand] private void SetLayerExportRecursive(object? value)
+        => LayerExportRecursive = ParseBooleanCommandParameter(value);
 
     /// <summary>快速导出图片名称、图层导出文件前缀是否可见</summary>
     public bool IsImageNameVisible => SelectedMode is ExportMode.QuickExport or ExportMode.Layers;
@@ -223,7 +236,7 @@ public partial class MainViewModel : ViewModelBase
         ExportMode.AllArtboards => HasArtboards ? $"导出全部 {ArtboardCount} 个画板" : "当前文档没有画板",
         ExportMode.SelectedArtboards => HasArtboards ? "导出 Photoshop 当前选中的画板" : "当前文档没有画板",
         ExportMode.Layers => "按一级图层分别生成图片",
-        ExportMode.Slices => HasSlices ? "按当前切片或可见图层生成图片" : "当前文档没有可用切片",
+        ExportMode.Slices => HasSlices ? "按 Photoshop 原生用户切片范围导出图片" : "当前文档没有可用切片",
         _ => string.Empty
     };
 
@@ -329,6 +342,7 @@ public partial class MainViewModel : ViewModelBase
     partial void OnSelectedModeChanged(ExportMode value)
     {
         OnPropertyChanged(nameof(IsFileNameVisible));
+        OnPropertyChanged(nameof(IsLayerMode));
         OnPropertyChanged(nameof(IsImageNameVisible));
         OnPropertyChanged(nameof(ImageNameLabel));
         OnPropertyChanged(nameof(ImageNamePlaceholder));
@@ -598,6 +612,7 @@ public partial class MainViewModel : ViewModelBase
             PhotoshopExePath = current.PhotoshopExePath,
             PollingIntervalMs = current.PollingIntervalMs,
             LayerExportWithDocName = LayerExportWithDocName,
+            LayerExportRecursive = LayerExportRecursive,
             LayerExportShowHint = LayerExportShowHint,
             AutoUseDocNameAsPrefix = AutoUseDocNameAsPrefix,
             ThemeMode = ThemeMode,
@@ -670,6 +685,7 @@ public partial class MainViewModel : ViewModelBase
         if (!HasDocument) return;
 
         var exportSettings = Snapshot();
+        AppendLog("Info", $"导出请求 mode={SelectedMode} parameters={System.Text.Json.JsonSerializer.Serialize(exportSettings)}");
         if (SelectedMode == ExportMode.QuickExport)
             exportSettings.ExpectedFileCount = 1;
         if (SelectedMode == ExportMode.AllArtboards)
@@ -795,6 +811,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 ExportStatusText = $"{title} 失败：{result.Error?.Message ?? "未知错误"}";
                 AppendLog("Error", $"✘ {title} 失败: {result.Error?.Message ?? "未知错误"}");
+                AppendLog("Debug", $"{title} 完整错误：{result.Error}；输出文件={System.Text.Json.JsonSerializer.Serialize(result.OutputFiles)}");
             }
         }
         catch (OperationCanceledException)
@@ -806,6 +823,7 @@ public partial class MainViewModel : ViewModelBase
         {
             ExportStatusText = $"{title} 异常：{ex.Message}";
             AppendLog("Error", $"✘ {title} 异常: {ex.Message}");
+            AppendLog("Debug", $"{title} 完整异常：{ex}");
         }
         finally
         {
@@ -856,6 +874,7 @@ public partial class MainViewModel : ViewModelBase
             FileName = SelectedMode == ExportMode.Slices ? FileName : string.Empty,
             ImageName = effectiveImageName,
             LayerExportWithDocName = LayerExportWithDocName,
+            LayerExportRecursive = LayerExportRecursive,
             LayerExportShowHint = LayerExportShowHint,
             ExportPathOption = ExportPathOption
         };

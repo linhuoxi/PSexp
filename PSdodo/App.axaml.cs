@@ -122,11 +122,13 @@ public class App : Application
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        // 日志放到用户数据目录，避免污染软件根目录：%AppData%\PsExporter\logs\psx.log
+        // 运行日志与 EXE 放在同一目录，便于直接检查。
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var logDirectory = Path.Combine(appData, "PsExporter", "logs");
+        var logDirectory = AppContext.BaseDirectory;
         Directory.CreateDirectory(logDirectory);
-        services.AddSingleton(new FileLogger(Path.Combine(logDirectory, "psx.log")));
+        var fileLogger = new FileLogger(Path.Combine(logDirectory, "psx.log"));
+        fileLogger.Info($"启动 pid={Environment.ProcessId} exe={Environment.ProcessPath} version={typeof(App).Assembly.GetName().Version} log={fileLogger.LogPath}");
+        services.AddSingleton(fileLogger);
 
         // PS 进程检测与 COM 桥接
         services.AddSingleton<IPhotoshopDetector, PhotoshopDetector>();

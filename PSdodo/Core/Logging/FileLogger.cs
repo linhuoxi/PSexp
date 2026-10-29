@@ -5,12 +5,14 @@ using System.Threading;
 namespace PsExporter.Core.Logging;
 
 /// <summary>
-/// 把日志写到 %AppData%/PsExporter/logs/psx.log，避免在软件根目录产生运行垃圾
+/// 写入调用方指定的日志文件；应用使用 EXE 同级目录的 psx.log。
 /// </summary>
 public sealed class FileLogger
 {
     private static readonly object _lock = new();
     private readonly string _logPath;
+
+    public string LogPath => _logPath;
 
     public FileLogger(string logPath)
     {

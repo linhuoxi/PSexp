@@ -1,18 +1,21 @@
-// 一级图层 / 可见一级图层编号导出，共用 UXP 实现。
+// 图层导出：一级图层 / 递归叶子图层，共用 UXP 实现。
 // 每次 saveAs 完成后回传文件清单；恢复可见性后才发布 done 回执。
 const { app, core } = require("photoshop");
 const fs = require("uxp").storage.localFileSystem;
-const sliceMode = {{SLICE_MODE}};
+
+const recursive = {{RECURSIVE}};
 const exportFolderUrl = "{{EXPORT_FOLDER_URL}}";
 const resultFolderUrl = "{{RESULT_FOLDER_URL}}";
 const format = "{{FORMAT}}".toLowerCase();
 const quality = {{QUALITY}};
 const rename = {{RENAME}};
 const imageName = "{{IMAGE_NAME}}";
-const fileName = "{{FILE_NAME}}";
+
 const withDocName = {{WITH_DOC_NAME}};
 const state = { done: false, success: false, files: [], error: "" };
 let resultFile;
+let stage = "创建任务回执";
+let activePath = resultFolderUrl;
 
 function safeName(value) {
     const name = String(value).replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/[. ]+$/, "");
@@ -20,48 +23,69 @@ function safeName(value) {
 }
 
 async function report() {
+    state.stage = stage;
+    state.path = activePath;
     await resultFile.write(JSON.stringify(state));
 }
 
 async function exportBatch(executionContext) {
     if (app.documents.length === 0) throw new Error("没有打开的文档");
     const doc = app.activeDocument;
-    const layers = Array.from(doc.layers);
+    const roots = Array.from(doc.layers);
+    const nodes = [];
+    function visit(items, parents = [], excluded = false) {
+        for (const layer of items) {
+            const blocked = excluded || /^排除/.test(layer.name);
+            const children = layer.layers ? Array.from(layer.layers) : [];
+            nodes.push({ layer, parents, blocked, group: children.length > 0 || layer.kind === "group" });
+            visit(children, [...parents, layer.id], blocked);
+        }
+    }
+    visit(roots);
+    const layers = nodes.map(node => node.layer);
     const visibility = new Map(layers.map(layer => [layer.id, layer.visible]));
-    // 固定初始目标，不能用导出过程中被改变的 visible 判断后续目标。
-    const targets = layers.filter(layer => !/^排除/i.test(layer.name) &&
-        (sliceMode ? visibility.get(layer.id) : !layer.isBackgroundLayer));
-    if (targets.length === 0) throw new Error("没有符合条件的一级图层");
+    const targets = nodes.filter(node => !node.blocked && !node.layer.isBackgroundLayer &&
+        (recursive ? !node.group : node.parents.length === 0)).map(node => node.layer);
+    if (targets.length === 0) throw new Error("没有符合条件的图层");
+    stage = "读取导出目录";
+    activePath = exportFolderUrl;
     const folder = await fs.getEntryWithUrl(exportFolderUrl);
+    stage = "枚举导出目录";
     const existingNames = new Set((await folder.getEntries()).map(entry => entry.name.toLowerCase()));
     const docName = safeName(doc.name.replace(/\.[^.]+$/, ""));
-    const prefix = sliceMode
-        ? (imageName ? safeName(imageName) + "_" : "") + safeName(fileName)
-        : (imageName ? safeName(imageName) : (withDocName ? docName : ""));
+    const prefix = imageName ? safeName(imageName) : (withDocName ? docName : "");
     let failure;
     try {
         for (const target of targets) {
             if (executionContext.isCancelled) throw new Error("Photoshop 已取消导出");
-            for (const layer of layers) {
-                // 一级图层模式保留背景与“排除”层原始可见性；编号模式只显示目标层。
-                const visible = layer.id === target.id || (!sliceMode &&
-                    (layer.isBackgroundLayer || /^排除/i.test(layer.name)) && visibility.get(layer.id));
+            stage = "切换图层可见性";
+            activePath = target.name;
+            for (const layer of [...layers].reverse()) {
+                // 背景与排除分支保留原显示状态；递归目标同时展开祖先组。
+                const node = nodes.find(item => item.layer.id === layer.id);
+                const targetNode = nodes.find(item => item.layer.id === target.id);
+                const visible = layer.id === target.id || targetNode.parents.includes(layer.id) ||
+                    ((node.blocked || layer.isBackgroundLayer || node.parents.includes(target.id)) && visibility.get(layer.id));
                 if (layer.visible !== visible) layer.visible = visible;
             }
-            const stem = sliceMode ? prefix + "_" + state.files.length
-                : (prefix ? prefix + "_" : "") + safeName(target.name);
+            const stem = (prefix ? prefix + "_" : "") + safeName(target.name);
             let name = stem + "." + format;
             if (rename) {
                 let index = 1;
                 while (existingNames.has(name.toLowerCase())) name = stem + "_" + index++ + "." + format;
             }
+            stage = "创建导出文件";
+            activePath = exportFolderUrl + "/" + name;
             const entry = await folder.createFile(name, { overwrite: !rename });
+            stage = "保存 " + format.toUpperCase() + " 副本";
             if (format === "png") await doc.saveAs.png(entry, {}, true);
             else if (format === "jpg") await doc.saveAs.jpg(entry, { quality: Math.round(12 * quality / 100) }, true);
             else throw new Error("不支持的导出格式: " + format);
             existingNames.add(name.toLowerCase());
             // 覆盖模式下不同图层可以同名；回执记录最终文件而非重复路径。
             if (!state.files.some(existing => existing.toLowerCase() === name.toLowerCase())) state.files.push(name);
+            stage = "写入导出进度";
+            activePath = resultFolderUrl + "/result.json";
             await report();
         }
     } catch (error) {
@@ -69,7 +93,7 @@ async function exportBatch(executionContext) {
     } finally {
         // 尽力恢复每一个图层，一层失败不能阻止其他图层恢复。
         const restoreErrors = [];
-        for (const layer of layers) {
+        for (const layer of [...layers].reverse()) {
             try {
                 if (layer.visible !== visibility.get(layer.id)) layer.visible = visibility.get(layer.id);
             } catch (error) { restoreErrors.push(layer.name + ": " + String(error)); }
@@ -85,10 +109,13 @@ try {
     const resultFolder = await fs.getEntryWithUrl(resultFolderUrl);
     resultFile = await resultFolder.createFile("result.json", { overwrite: true });
     await report();
-    await core.executeAsModal(exportBatch, { commandName: sliceMode ? "Export Visible Layers" : "Export Top-level Layers" });
+    stage = "检查文档与导出目标";
+    activePath = exportFolderUrl;
+    await core.executeAsModal(exportBatch, { commandName: recursive ? "Export All Layers" : "Export Top-level Layers" });
     state.success = true;
 } catch (error) {
-    state.error = String(error);
+    state.error = stage + " [" + activePath + "]：" + String(error);
+    state.stack = error && error.stack ? String(error.stack) : "";
 } finally {
     state.done = true;
     if (resultFile) await report();

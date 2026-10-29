@@ -529,6 +529,7 @@ try
             ["RESULT_FOLDER_URL"] = "file:/C:/Task",
             ["FILE_NAME"] = "export",
             ["SLICE_MODE"] = "false",
+            ["RECURSIVE"] = "false",
             ["FORMAT"] = "jpg",
             ["QUALITY"] = "80",
             ["RENAME"] = "true",
@@ -552,6 +553,26 @@ try
         True(template.Contains("visibility.get(layer.id)"));
         True(template.Contains("finally {"));
         True(template.Contains("layer.visible = visibility.get(layer.id)"));
+    });
+
+    await RunAsync("Export failure logs parameters and full exception before Photoshop dispatch", async () =>
+    {
+        var logPath = Path.Combine(tempRoot, "export-diagnostics.log");
+        var logger = new PsExporter.Core.Logging.FileLogger(logPath);
+        var service = new ExportService(new UxpScriptBridge(), logger);
+        try
+        {
+            await service.ExportSlicesAsync(new ExportSettings { ExportPath = "bad\0path", FileName = "export" });
+            throw new Exception("Invalid output path must fail before dispatch.");
+        }
+        catch (ArgumentException) { }
+        var contents = logger.ReadAll();
+        True(contents.Contains("[task="));
+        True(contents.Contains("参数="));
+        True(contents.Contains("sliceMode=true"));
+        True(contents.Contains("调用链异常"));
+        True(contents.Contains("ArgumentException"));
+        Equal(logPath, logger.LogPath);
     });
 
     Run("UXP folder URL preserves Chinese names and spaces", () =>

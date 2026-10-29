@@ -14,6 +14,6 @@ public static class ScriptNames
     public const string ExportAllArtboards = "export/all_artboards";
     public const string ExportSelectedArtboards = "export/selected_artboards";
     public const string ExportLayers = "export/layers";
-    public const string ExportSlices = "export/slices";
+    public const string ExportSlices = "export/native_slices";
     public const string ExportLayerBatch = "export/layer_batch";
 }

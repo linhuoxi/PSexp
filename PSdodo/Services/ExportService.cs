@@ -14,10 +14,12 @@ namespace PsExporter.Services;
 public sealed class ExportService : IExportService
 {
     private readonly UxpScriptBridge _uxpBridge;
+    private readonly FileLogger _logger;
 
-    public ExportService(UxpScriptBridge uxpBridge)
+    public ExportService(UxpScriptBridge uxpBridge, FileLogger? logger = null)
     {
         _uxpBridge = uxpBridge;
+        _logger = logger ?? new FileLogger(Path.Combine(AppContext.BaseDirectory, "psx.log"));
     }
 
     // 三个快速导出走 UXP（.psjs 文件关联触发，支持 batchPlay + executeAsModal）
@@ -107,6 +109,7 @@ public sealed class ExportService : IExportService
         FileName = source.FileName,
         ImageName = source.ImageName,
         LayerExportWithDocName = source.LayerExportWithDocName,
+        LayerExportRecursive = source.LayerExportRecursive,
         LayerExportShowHint = source.LayerExportShowHint,
         ExportPathOption = source.ExportPathOption,
         ExpectedFileCount = source.ExpectedFileCount,
@@ -159,7 +162,7 @@ public sealed class ExportService : IExportService
         }
     }
 
-    // 两种一级图层模式共用 UXP DOM saveAs，并通过明确回执传递进度与结果。
+    // 图层使用一级/递归脚本；切片使用独立的原生切片脚本。
     public Task<PsBridgeResult> ExportLayersAsync(ExportSettings s, ExportProgressHandler? onProgress = null, CancellationToken ct = default)
         => ExportLayerBatchAsync(s, sliceMode: false, onProgress, ct);
 
@@ -173,31 +176,82 @@ public sealed class ExportService : IExportService
         args["QUALITY"] = s.Quality.ToString();
         args["FILE_NAME"] = ScriptParameterInjector.EscapeJsString(s.FileName);
         args["SLICE_MODE"] = sliceMode ? "true" : "false";
-        return await ExecuteReceiptTaskAsync(ScriptLibrary.GetScript(ScriptNames.ExportLayerBatch), args, s, onProgress, ct);
+        args["RECURSIVE"] = s.LayerExportRecursive ? "true" : "false";
+        return await ExecuteReceiptTaskAsync(ScriptLibrary.GetScript(sliceMode ? ScriptNames.ExportSlices : ScriptNames.ExportLayerBatch), args, s, onProgress, ct);
     }
 
     private async Task<PsBridgeResult> ExecuteReceiptTaskAsync(
         string template, Dictionary<string, string> args, ExportSettings s,
         ExportProgressHandler? onProgress, CancellationToken ct)
     {
+        var taskId = Guid.NewGuid().ToString("N");
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        _logger.Info($"[task={taskId}] 开始 UXP 导出；exe={Environment.ProcessPath}；temp={Path.GetTempPath()}；log={_logger.LogPath}");
+        _logger.Info($"[task={taskId}] 参数={System.Text.Json.JsonSerializer.Serialize(s)}；sliceMode={args.GetValueOrDefault("SLICE_MODE", "false")}");
+        try
+        {
+            var result = await ExecuteReceiptTaskCoreAsync(template, args, s, (name, count) =>
+            {
+                _logger.Debug($"[task={taskId}] 输出进度 count={count} file={System.Text.Json.JsonSerializer.Serialize(name)}");
+                onProgress?.Invoke(name, count);
+            }, ct, taskId);
+            _logger.Info($"[task={taskId}] 结束 success={result.Success} count={result.ExportedCount} elapsedMs={timer.ElapsedMilliseconds}");
+            if (result.Error is not null) _logger.Error($"[task={taskId}] 完整异常：{result.Error}");
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Warn($"[task={taskId}] 已取消等待；elapsedMs={timer.ElapsedMilliseconds}；Photoshop 可能继续执行，保留任务文件");
+            throw;
+        }
+        catch (Exception error)
+        {
+            _logger.Error($"[task={taskId}] 调用链异常，elapsedMs={timer.ElapsedMilliseconds}：{error}");
+            throw;
+        }
+    }
+
+    private async Task<PsBridgeResult> ExecuteReceiptTaskCoreAsync(
+        string template, Dictionary<string, string> args, ExportSettings s,
+        ExportProgressHandler? onProgress, CancellationToken ct, string taskId)
+    {
         ct.ThrowIfCancellationRequested();
         Directory.CreateDirectory(s.ExportPath);
-        var taskDirectory = Path.Combine(Path.GetTempPath(), "PSexp", "tasks", Guid.NewGuid().ToString("N"));
+        var taskDirectory = Path.Combine(Path.GetTempPath(), "PSexp", "tasks", taskId);
         Directory.CreateDirectory(taskDirectory);
         args["EXPORT_FOLDER_URL"] = ScriptParameterInjector.EscapeJsString(ToUxpFolderUrl(s.ExportPath));
         args["RESULT_FOLDER_URL"] = ScriptParameterInjector.EscapeJsString(ToUxpFolderUrl(taskDirectory));
         var script = ScriptParameterInjector.Inject(template, args);
+        _logger.Info($"[task={taskId}] 输出目录={s.ExportPath} exists={Directory.Exists(s.ExportPath)}；回执目录={taskDirectory}");
+        _logger.Debug($"[task={taskId}] 注入参数={System.Text.Json.JsonSerializer.Serialize(args.Where(pair => pair.Key != "SCRIPT_BODY").ToDictionary(pair => pair.Key, pair => pair.Value))}；脚本SHA256={Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(script)))}");
         var dispatched = await _uxpBridge.ExecuteAsync(script, ct);
+        _logger.Info($"[task={taskId}] 脚本启动 success={dispatched.Success} path={dispatched.TempFilePath}");
+        if (dispatched.Error is not null) _logger.Error($"[task={taskId}] 脚本启动异常：{dispatched.Error}");
         if (!dispatched.Success) return PsBridgeResult.Failed(dispatched.Error ?? new IOException("UXP 脚本启动失败"));
         var result = await UxpTaskWatcher.WaitForCompletionAsync(
             Path.Combine(taskDirectory, "result.json"), s.ExportPath,
             (name, count) => onProgress?.Invoke(name, count), ct);
-        if (!string.IsNullOrEmpty(result.ReturnValue))
+        _logger.Info($"[task={taskId}] 回执={result.ReturnValue}");
+        if (result.Success && !string.IsNullOrEmpty(result.ReturnValue))
         {
             await _uxpBridge.CleanupTempFileAsync(dispatched.TempFilePath);
             try { Directory.Delete(taskDirectory, recursive: true); }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+        if (!result.Success)
+        {
+            return new PsBridgeResult
+            {
+                Success = false, ReturnValue = result.ReturnValue,
+                ExportedCount = result.ExportedCount, OutputFiles = result.OutputFiles,
+                Error = result.Error,
+                Logs = [.. result.Logs, new PsLogEntry
+                {
+                    Level = PsLogLevel.Warn,
+                    Message = $"导出诊断记录已保留：{taskDirectory}；脚本：{dispatched.TempFilePath}"
+                }]
+            };
         }
         return result;
     }

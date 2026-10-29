@@ -13,7 +13,11 @@ const wrapper = fs.readFileSync(path.join(root, 'receipt_task.psjs'), 'utf8');
             const body = fs.readFileSync(path.join(root, mode + '.psjs'), 'utf8').replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => args[key]);
             const script = wrapper.replace('{{SCRIPT_BODY}}', body).replace('{{RESULT_FOLDER_URL}}', 'file:/task').replace('{{EXPORT_FOLDER_URL}}', 'file:/output');
             const ps = {
-                app: { documents: scenario === 'no document' ? [] : [{}] },
+                app: { documents: scenario === 'no document' ? [] : [{}], activeDocument: {
+                    name: 'output.psd', saveAs: { async png() {
+                        if (scenario === 'throw' || scenario === 'action error') throw new Error('save failed');
+                    } }
+                } },
                 core: { async executeAsModal(fn) { await fn(); }, showAlert() { throw new Error('Unexpected Photoshop dialog'); } },
                 action: { async batchPlay() {
                     if (scenario === 'throw') throw new Error('action threw');
@@ -22,13 +26,18 @@ const wrapper = fs.readFileSync(path.join(root, 'receipt_task.psjs'), 'utf8');
             };
             const uxp = { storage: { localFileSystem: { async getEntryWithUrl(url) {
                 return url === 'file:/task' ? { async createFile() { return { async write(json) { reports.push(JSON.parse(json)); } }; } }
-                    : { async getEntries() { return scenario === 'no output' ? [] : [{ name: 'output.png', isFile: true }]; } };
+                    : { async createFile(name) { return { name }; }, async getEntries() { return scenario === 'no output' ? [] : [{ name: 'output.png', isFile: true }]; } };
             } } } };
             await new vm.Script('(async()=>{' + script + '})()').runInNewContext({ require(name) { return name === 'photoshop' ? ps : uxp; } });
             const result = reports.at(-1);
             assert.equal(result.done, true);
             assert.equal(result.success, scenario === 'success');
-            if (scenario !== 'success') assert.ok(result.error.length > 0);
+            if (scenario !== 'success') {
+                assert.ok(result.error.length > 0);
+                assert.ok(result.stage.length > 0);
+                assert.equal(result.path, 'file:/output');
+                assert.ok(result.stack.length > 0);
+            }
             console.log('PASS ' + mode + ': ' + scenario); count++;
         }
     }

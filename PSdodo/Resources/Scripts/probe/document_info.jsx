@@ -41,8 +41,26 @@ function probeDocumentInfo() {
             $.writeln('PSX_LOG|warn|artboard count failed: ' + e);
         }
 
-        // "切片导出"实际遍历一级图层，只要有文档就能用，无需切片检测
-        var hasSlices = true;
+        // 只把实际存在的原生用户切片/基于图层的切片作为切片目标。
+        var hasSlices = false;
+        try {
+            var sliceRef = new ActionReference();
+            sliceRef.putProperty(stringIDToTypeID('property'), stringIDToTypeID('slices'));
+            sliceRef.putEnumerated(stringIDToTypeID('document'), stringIDToTypeID('ordinal'), stringIDToTypeID('targetEnum'));
+            var sliceRoot = executeActionGet(sliceRef).getObjectValue(stringIDToTypeID('slices'));
+            var sliceList = sliceRoot.getList(stringIDToTypeID('slices'));
+            for (var si = 0; si < sliceList.count; si++) {
+                var slice = sliceList.getObjectValue(si);
+                var origin = typeIDToStringID(slice.getEnumerationValue(stringIDToTypeID('origin')));
+                var sliceType = typeIDToStringID(slice.getEnumerationValue(stringIDToTypeID('type')));
+                if ((origin === 'userGenerated' || origin === 'layerGenerated') && sliceType === 'image') {
+                    hasSlices = true;
+                    break;
+                }
+            }
+        } catch (sliceError) {
+            $.writeln('PSX_LOG|warn|native slice detection failed: ' + sliceError);
+        }
 
         var json = '{"name":' + jsonStr(name) +
                    ',"hasArtboards":' + (abCount > 0 ? 'true' : 'false') +

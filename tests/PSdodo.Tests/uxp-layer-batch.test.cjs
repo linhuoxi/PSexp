@@ -17,7 +17,10 @@ async function run(options = {}) {
     const entries = new Set(options.existing || []);
     const saves = [], reports = [], alerts = [];
     const folder = {
-        async getEntries() { return [...entries].map(name => ({ name })); },
+        async getEntries() {
+            if (options.missingDirectory) throw new Error("no such file or directory");
+            return [...entries].map(name => ({ name }));
+        },
         async createFile(name, { overwrite }) {
             if (!overwrite && entries.has(name)) throw new Error("file exists");
             entries.add(name);
@@ -51,7 +54,7 @@ async function run(options = {}) {
         }
     } };
     const args = {
-        SLICE_MODE: String(!!options.slices), EXPORT_FOLDER_URL: "file:/output", RESULT_FOLDER_URL: "file:/task",
+        RECURSIVE: String(!!options.recursive), EXPORT_FOLDER_URL: "file:/output", RESULT_FOLDER_URL: "file:/task",
         FORMAT: options.format || "png", QUALITY: String(options.quality || 80), RENAME: String(options.rename !== false),
         IMAGE_NAME: options.imageName || "", FILE_NAME: "export", WITH_DOC_NAME: "true", SHOW_HINT: String(!!options.hint)
     };
@@ -69,10 +72,10 @@ async function run(options = {}) {
 
 (async () => {
     const tests = {
-        async "all initially visible layers are numbered, hidden and excluded layers skipped"() {
-            const { saves, result } = await run({ slices: true });
-            assert.deepEqual(saves.map(save => save.name), ["export_0.png", "export_1.png", "export_2.png"]);
-            assert.ok(saves.every(save => save.visible.length === 1));
+        async "top-level exports include hidden targets and skip excluded targets"() {
+            const { saves, result } = await run({});
+            assert.deepEqual(saves.map(save => save.name), ["设计_首层.png", "设计_次层.png", "设计_隐藏层.png"]);
+            assert.ok(saves.every(save => save.visible.includes("排除覆盖") && save.visible.includes("背景")));
             assert.equal(result.success, true);
         },
         async "top-level mode exports hidden targets and keeps background and excluded overlays"() {
@@ -87,12 +90,12 @@ async function run(options = {}) {
             assert.equal(saves[0].name, "自定义_首层.jpg");
         },
         async "case-insensitive file conflicts receive suffix"() {
-            const { saves } = await run({ slices: true, existing: ["EXPORT_0.PNG", "export_0_1.png"] });
-            assert.equal(saves[0].name, "export_0_2.png");
+            const { saves } = await run({ existing: ["设计_首层.PNG", "设计_首层_1.png"] });
+            assert.equal(saves[0].name, "设计_首层_2.png");
         },
         async "overwrite keeps requested name"() {
-            const { saves } = await run({ slices: true, rename: false, existing: ["export_0.png"] });
-            assert.equal(saves[0].name, "export_0.png");
+            const { saves } = await run({ rename: false, existing: ["设计_首层.png"] });
+            assert.equal(saves[0].name, "设计_首层.png");
         },
         async "same layer names overwrite one final file without duplicate receipts"() {
             const { saves, result } = await run({ rename: false, layers: [
@@ -108,13 +111,28 @@ async function run(options = {}) {
             assert.deepEqual(result.files, ["设计_首层.png"]);
             assert.match(result.error, /save failed/);
         },
+        async "missing directory identifies the failing operation and path"() {
+            const { result, saves } = await run({ missingDirectory: true });
+            assert.equal(result.success, false);
+            assert.equal(saves.length, 0);
+            assert.match(result.error, /枚举导出目录/);
+            assert.match(result.error, /file:\/output/);
+            assert.match(result.error, /no such file or directory/);
+        },
+        async "save failure identifies the destination and retains partial files"() {
+            const { result } = await run({ failAt: 2 });
+            assert.equal(result.success, false);
+            assert.deepEqual(result.files, ["设计_首层.png"]);
+            assert.match(result.error, /保存 PNG 副本/);
+            assert.match(result.error, /设计_次层\.png/);
+        },
         async "empty document returns explicit failure"() {
             const { result } = await run({ noDocument: true });
             assert.equal(result.success, false);
             assert.equal(result.files.length, 0);
         },
         async "no eligible targets returns failure"() {
-            const { result } = await run({ slices: true, layers: [{ id: 1, name: "隐藏", visible: false }] });
+            const { result } = await run({ layers: [{ id: 1, name: "排除隐藏", visible: false }] });
             assert.equal(result.success, false);
         },
         async "Photoshop cancellation returns failure and restores layers"() {

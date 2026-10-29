@@ -24,6 +24,7 @@ public sealed class AppSettings
 
     /// <summary>导出一级图层时文件名带文档名前缀</summary>
     public bool LayerExportWithDocName { get; set; } = true;
+    public bool LayerExportRecursive { get; set; }
 
     /// <summary>兼容旧配置保留；当前版本不再使用 Photoshop 提示窗。</summary>
     public bool LayerExportShowHint { get; set; } = false;
