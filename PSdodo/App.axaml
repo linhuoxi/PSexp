@@ -14,5 +14,6 @@
     <Application.Styles>
         <FluentTheme />
         <StyleInclude Source="avares://PSexpV3/Styles/Controls.axaml"/>
+        <StyleInclude Source="avares://PSexpV3/Styles/Tray.axaml"/>
     </Application.Styles>
 </Application>

@@ -1,0 +1,66 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:PsExporter.Controls">
+    <Style Selector=":is(Window)#AvaloniaTrayPopupRoot_PSexp :is(MenuFlyoutPresenter)">
+        <Setter Property="MinWidth" Value="216"/>
+        <Setter Property="MaxWidth" Value="256"/>
+        <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+        <Setter Property="FontFamily" Value="{StaticResource Font.Ui}"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Body}"/>
+        <Setter Property="ItemsPanel">
+            <ItemsPanelTemplate><StackPanel Spacing="2"/></ItemsPanelTemplate>
+        </Setter>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid Margin="8">
+                    <controls:ContinuousBorder Background="{TemplateBinding Background}" BorderBrush="{StaticResource Brush.Border}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius.Md}" Padding="6" BoxShadow="{StaticResource Shadow.Menu}">
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MaxHeight="480">
+                            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"
+                                KeyboardNavigation.TabNavigation="Continue" Grid.IsSharedSizeScope="True"/>
+                        </ScrollViewer>
+                    </controls:ContinuousBorder>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+        <Style.Animations>
+            <Animation Duration="0:0:0.14" FillMode="Forward">
+                <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+    <Style Selector=":is(Window)#AvaloniaTrayPopupRoot_PSexp :is(MenuItem)">
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Padding" Value="8,0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+        <Setter Property="FontFamily" Value="{StaticResource Font.Ui}"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Body}"/>
+        <Setter Property="Transitions"><Transitions><BrushTransition Property="Background" Duration="0:0:0.10"/></Transitions></Setter>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <controls:ContinuousBorder Background="{TemplateBinding Background}" CornerRadius="{StaticResource Radius.SegmentInner}" Padding="{TemplateBinding Padding}">
+                    <Grid ColumnDefinitions="18,*" ColumnSpacing="6">
+                        <Path Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" IsVisible="{TemplateBinding IsChecked}"
+                            Data="M 2,7 L 6,11 L 13,3" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.6"/>
+                        <ContentPresenter Grid.Column="1" Name="PART_HeaderPresenter" Content="{TemplateBinding Header}"
+                            RecognizesAccessKey="True" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+                    </Grid>
+                </controls:ContinuousBorder>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector=":is(Window)#AvaloniaTrayPopupRoot_PSexp :is(MenuItem):pointerover, :is(Window)#AvaloniaTrayPopupRoot_PSexp :is(MenuItem):selected">
+        <Setter Property="Background" Value="{StaticResource Brush.Hover}"/>
+    </Style>
+    <Style Selector=":is(Window)#AvaloniaTrayPopupRoot_PSexp :is(MenuItem):disabled">
+        <Setter Property="Opacity" Value="{StaticResource Opacity.Disabled}"/>
+    </Style>
+    <Style Selector=":is(Window)#AvaloniaTrayPopupRoot_PSexp Separator">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="8,5"/>
+        <Setter Property="Background" Value="{StaticResource Brush.Divider}"/>
+    </Style>
+</Styles>

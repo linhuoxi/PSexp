@@ -446,22 +446,50 @@
             </Transitions>
         </Setter>
     </Style>
-    <Style Selector="Button.qcell.quality-current controls|ContinuousBorder.quality-mark">
-        <Setter Property="RenderTransform" Value="scale(1.03, 1.1)"/>
-    </Style>
     <Style Selector="Window.quality-motion Button.qcell:pointerover controls|ContinuousBorder.quality-mark">
         <Setter Property="RenderTransform" Value="scale(1.12, 1.12)"/>
     </Style>
-    <Style Selector="controls|ContinuousBorder.settings-card">
-        <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+    <!-- One semantic card per settings group; controls stay aligned in compact rows. -->
+    <Style Selector="StackPanel.settings-page">
+        <Setter Property="Spacing" Value="{StaticResource Space.Md}"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.settings-section">
+        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
         <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius" Value="{StaticResource Radius.Md}"/>
-        <Setter Property="Padding" Value="16"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="Padding" Value="12"/>
     </Style>
-    <Style Selector="TextBlock.setting-card-title">
-        <Setter Property="FontSize" Value="14"/>
+    <Style Selector="Grid.settings-row">
+        <Setter Property="MinHeight" Value="40"/>
+    </Style>
+    <Style Selector="Grid.settings-row > Panel">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBlock.settings-group-title">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Subtitle}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>
+    </Style>
+    <Style Selector="TextBlock.settings-caption">
+        <Setter Property="FontSize" Value="{StaticResource FontSize.Caption}"/>
+        <Setter Property="LineHeight" Value="18"/>
+        <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.settings-separator">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource Brush.Divider}"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.settings-summary">
+        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
+        <Setter Property="Padding" Value="12"/>
+    </Style>
+    <Style Selector="Button.settings-update-action">
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Height" Value="{StaticResource Control.StandardHeight}"/>
+        <Setter Property="Padding" Value="{StaticResource Padding.Secondary}"/>
     </Style>
     <Style Selector="TextBlock.setting-label">
         <Setter Property="FontSize" Value="13"/>

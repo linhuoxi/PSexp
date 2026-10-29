@@ -162,6 +162,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _settingsPageFadeTimer.Tick += OnSettingsPageFadeTick;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         PsStatusDot.RenderTransform = _psStatusScaleTransform;
         PsStatusDot.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
@@ -184,7 +185,10 @@ public partial class MainWindow : Window
         _edgeHoverTimer.Tick += OnEdgeHoverTimerTick;
 
         Opened += OnWindowOpened;
+        Opened += async (_, _) => { if (DataContext is MainViewModel model) await model.InitializeUpdatesAsync(); };
+        Closed += (_, _) => { if (DataContext is MainViewModel model) model.StopUpdateChecks(); };
         Activated += OnWindowActivated;
+        Deactivated += (_, _) => EndInputEditing();
         PositionChanged += OnWindowPositionChanged;
         SizeChanged += OnWindowSizeChanged;
         Closing += OnWindowClosing;
@@ -246,21 +250,28 @@ public partial class MainWindow : Window
             _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(_animationViewModel.DocumentSyncIntervalMs);
         }
         UpdateStatusAnimationState(restartActiveClocks: true);
-        UpdateQualityEndpoint();
     }
 
     private void OnAnimationViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainViewModel.Quality))
         {
-            UpdateQualityEndpoint();
             PulseQualityMeter();
         }
         if (e.PropertyName is nameof(MainViewModel.SelectedMode) or nameof(MainViewModel.IsViewSetting))
         {
+            EndInputEditing();
             // 模式的字段数不同，进入新页面从顶部开始，避免沿用画板表单的旧滚动位置。
             ExportScrollViewer.Offset = default;
         }
+        if (e.PropertyName == nameof(MainViewModel.SelectedSettingsSection))
+        {
+            EndInputEditing();
+            SettingsScrollViewer.Offset = default;
+            BeginSettingsPageFade();
+        }
+        if (e.PropertyName == nameof(MainViewModel.IsViewSetting) && _animationViewModel is { IsViewSetting: false })
+            StopSettingsPageFade();
         if (e.PropertyName == nameof(MainViewModel.DocumentSyncIntervalMs) && _animationViewModel is { } syncModel)
             _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(syncModel.DocumentSyncIntervalMs);
         if (string.IsNullOrEmpty(e.PropertyName)
@@ -324,7 +335,8 @@ public partial class MainWindow : Window
         }
 
         _wasRefreshingStatus = isRefreshing;
-        if (ShouldRunStatusAnimation(_isDocked, _isDockRevealed, _isSnapAnimating)
+        if (IsVisible && WindowState != WindowState.Minimized
+            && ShouldRunStatusAnimation(_isDocked, _isDockRevealed, _isSnapAnimating)
             && (isPsRunning || isRefreshing || _isRefreshSettling))
             _statusAnimationTimer.Start();
         else
@@ -336,7 +348,7 @@ public partial class MainWindow : Window
 
     private void OnStatusAnimationTimerTick(object? sender, EventArgs e)
     {
-        if (!ShouldRunStatusAnimation(_isDocked, _isDockRevealed, _isSnapAnimating))
+        if (!IsVisible || WindowState == WindowState.Minimized || !ShouldRunStatusAnimation(_isDocked, _isDockRevealed, _isSnapAnimating))
         {
             _statusAnimationTimer.Stop();
             return;
@@ -384,6 +396,8 @@ public partial class MainWindow : Window
     private void OnWindowClosed(object? sender, EventArgs e)
     {
         _isClosing = true;
+        StopSettingsPageFade();
+        _settingsPageFadeTimer.Tick -= OnSettingsPageFadeTick;
         _documentSyncTimer.Stop();
         Screens.Changed -= OnScreensChanged;
         _edgeAnimationGeneration++;
@@ -578,7 +592,9 @@ public partial class MainWindow : Window
             var pixelHeight = (int)Math.Max(1, Math.Round(heightDip * scaling));
 
             using var rtb = new RenderTargetBitmap(new PixelSize(pixelWidth, pixelHeight), new Vector(96 * scaling, 96 * scaling));
-            rtb.Render(MainContentBorder);
+            // Capture the same outer coordinates as the live window, including shadow.
+            // Rendering only MainContentBorder would drop its margin and shift the genie image.
+            rtb.Render(RootGrid);
 
             var info = new SKImageInfo(pixelWidth, pixelHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
             var bitmap = new SKBitmap(info);
@@ -660,10 +676,10 @@ public partial class MainWindow : Window
         CloseGenieAnimationWindow();
         CloseDockIcon();
         ClearDockRevealBitmap();
-        Opacity = 1.0;
-        Position = _dockExpandedPos;
-        _isDocked = false;
         WindowTaskSwitcher.Configure(this, excluded: false);
+        Position = _dockExpandedPos;
+        Opacity = 1.0;
+        _isDocked = false;
         _isDockRevealed = false;
         _dockedEdge = DockEdge.None;
         if (DataContext is MainViewModel vm)
@@ -699,7 +715,6 @@ public partial class MainWindow : Window
         try
         {
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-            WindowTaskSwitcher.Configure(this, excluded: true);
             if (hiding)
             {
                 ClearDockRevealBitmap();
@@ -737,6 +752,7 @@ public partial class MainWindow : Window
             if (generation != _edgeAnimationGeneration || _isClosing) return;
             Opacity = 0;
             Position = _offscreenParkPos;
+            WindowTaskSwitcher.Configure(this, excluded: true);
             CloseDockIcon();
             _snapClock.Restart();
             _frameCount = 0;
@@ -806,11 +822,15 @@ public partial class MainWindow : Window
             _dockRevealBitmap = _genieCapturedBitmap; // 转移所有权，不复制整张高 DPI 位图。
             _genieCapturedBitmap = null;
             ShowDockIcon();
-            Position = _offscreenParkPos;
             Opacity = 0;
+            Position = _offscreenParkPos;
+            WindowTaskSwitcher.Configure(this, excluded: true);
         }
         else
         {
+            // Restore taskbar/Alt+Tab presence behind the animation while the real window
+            // is still transparent and parked; the first user click must not change HWND styles.
+            WindowTaskSwitcher.Configure(this, excluded: false);
             Position = _dockExpandedPos;
             Opacity = 1;
         }
@@ -907,6 +927,8 @@ public partial class MainWindow : Window
         SetWindowCornerRound();
         // 此时窗口已关联实际显示器，避免初始化阶段按错误屏幕写入过小 MaxWidth。
         RestoreSavedWindowSize();
+        _documentSyncTimer.Start();
+        UpdateStatusAnimationState(restartActiveClocks: true);
         // 窗口已关联实际句柄，安装子类化拦截 WM_EXITSIZEMOVE
         InstallWndProcSubclass();
     }
@@ -951,6 +973,31 @@ public partial class MainWindow : Window
     {
         _windowSizeSaveTimer.Stop();
         SaveCurrentWindowSize();
+        if (e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
+        {
+            if (Application.Current is App application) application.MarkShutdownRequested();
+            return;
+        }
+        if (Application.Current is App { HasTrayIcon: true, IsExitRequested: false } app
+            && DataContext is MainViewModel { CloseToTray: true })
+        {
+            e.Cancel = true;
+            HideToTray();
+            app.NotifyHiddenToTray();
+        }
+    }
+
+    public void HideToTray()
+    {
+        EndInputEditing();
+        Hide();
+        if (_isDocked) BeginUndockForDrag();
+        CloseDockIcon();
+        CloseGenieAnimationWindow();
+        StopSettingsPageFade();
+        _documentSyncTimer.Stop();
+        _statusAnimationTimer.Stop();
+        _edgeHoverTimer.Stop();
     }
 
     private void SaveCurrentWindowSize()
@@ -988,18 +1035,10 @@ public partial class MainWindow : Window
         if (steps == 0) return;
         // 输入框尚在编辑时先结束编辑，再使用滚轮的最终值，避免失焦覆盖调节结果。
         if (QualityInput.IsFocused)
-            TopLevel.GetTopLevel(this)?.FocusManager?.Focus(null!, NavigationMethod.Pointer, e.KeyModifiers);
+            EndInputEditing(e.KeyModifiers);
         var quality = Math.Clamp(vm.Quality + steps, 1, 100);
         if (quality != vm.Quality) vm.Quality = quality;
         else PulseQualityMeter();
-    }
-
-    private void UpdateQualityEndpoint()
-    {
-        if (DataContext is not MainViewModel vm) return;
-        var index = Math.Clamp((vm.Quality - 1) / 4, 0, QualityMeter.Children.Count - 1);
-        for (var i = 0; i < QualityMeter.Children.Count; i++)
-            QualityMeter.Children[i].Classes.Set("quality-current", i == index);
     }
 
     private void PulseQualityMeter()
@@ -1035,18 +1074,35 @@ public partial class MainWindow : Window
         });
     }
 
+    private Control? FindFocusedEditor()
+    {
+        Control? editor = null;
+        for (var visual = FocusManager?.GetFocusedElement() as Visual; visual is not null; visual = visual.GetVisualParent())
+            if (visual is TextBox or NumericUpDown) editor = (Control)visual;
+        return editor;
+    }
+
+    private void EndInputEditing(KeyModifiers modifiers = KeyModifiers.None)
+    {
+        if (FindFocusedEditor() is null) return;
+        // 将焦点交给窗口，避免空白/非焦点按钮把键盘焦点继续留在输入框。
+        if (!Focus(NavigationMethod.Pointer, modifiers))
+            FocusManager?.Focus(null!, NavigationMethod.Pointer, modifiers);
+    }
     private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (QualityInput.IsFocused)
+        // 先结束原输入框编辑，再让目标控件处理点击；不吞掉目标控件的事件。
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed && FindFocusedEditor() is { } editor)
         {
-            var p = e.GetPosition(QualityInput);
-            if (p.X < 0 || p.Y < 0 || p.X > QualityInput.Bounds.Width || p.Y > QualityInput.Bounds.Height)
-                TopLevel.GetTopLevel(this)?.FocusManager?.Focus(null!, NavigationMethod.Pointer, e.KeyModifiers);
+            var insideEditor = false;
+            for (var visual = e.Source as Visual; visual is not null; visual = visual.GetVisualParent())
+                if (ReferenceEquals(visual, editor)) { insideEditor = true; break; }
+            if (!insideEditor) EndInputEditing(e.KeyModifiers);
         }
         if (e.Handled || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
             || _isSnapAnimating || DataContext is not MainViewModel { EnableBlankDrag: true }) return;
         var position = e.GetPosition(this);
-        if (position.X < 8 || position.Y < 8 || position.X > Bounds.Width - 8 || position.Y > Bounds.Height - 8) return;
+        if (!MainContentBorder.Bounds.Deflate(new Thickness(8)).Contains(position)) return;
         for (var visual = e.Source as Visual; visual is not null; visual = visual.GetVisualParent())
         {
             if (visual is Button or TextBox or ScrollBar or Thumb or Slider or ComboBox or NumericUpDown
@@ -1068,6 +1124,8 @@ public partial class MainWindow : Window
         if (wasMinimized)
             WindowState = WindowState.Normal;
 
+        _documentSyncTimer.Start();
+        UpdateStatusAnimationState(restartActiveClocks: false);
         Activate();
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
 

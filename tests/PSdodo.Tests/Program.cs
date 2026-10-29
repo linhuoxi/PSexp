@@ -110,7 +110,7 @@ try
     {
         Equal(440d, AppSettings.DefaultWindowWidth);
         Equal(660d, AppSettings.DefaultWindowHeight);
-        Equal(420d, AppSettings.MinimumWindowWidth);
+        Equal(360d, AppSettings.MinimumWindowWidth);
         Equal(600d, AppSettings.MinimumWindowHeight);
         Equal(0.75d, AppSettings.WindowAspectRatio);
 
@@ -119,7 +119,7 @@ try
             SettingsService.NormalizeWindowSize(double.NaN, 640));
 
         var minimum = SettingsService.NormalizeWindowSize(300, 400);
-        Equal(420d, minimum.Width);
+        Equal(360d, minimum.Width);
         Equal(600d, minimum.Height);
 
         var customSize = SettingsService.NormalizeWindowSize(725, 515);
@@ -176,25 +176,25 @@ try
         var normal = MainWindow.CalculateWindowConstraints(725, 515, 1920, 1040);
         Equal(725d, normal.Width);
         Equal(600d, normal.Height);
-        Equal(420d, normal.MinWidth);
+        Equal(360d, normal.MinWidth);
         Equal(600d, normal.MinHeight);
         Equal(1888d, normal.MaxWidth);
         Equal(1008d, normal.MaxHeight);
 
         var compact = MainWindow.CalculateWindowConstraints(300, 400, 1920, 1040);
-        Equal(420d, compact.Width);
+        Equal(360d, compact.Width);
         Equal(600d, compact.Height);
 
         var smallScreen = MainWindow.CalculateWindowConstraints(725, 515, 640, 480);
         Equal(608d, smallScreen.Width);
         Equal(448d, smallScreen.Height);
-        Equal(420d, smallScreen.MinWidth);
+        Equal(360d, smallScreen.MinWidth);
         Equal(448d, smallScreen.MinHeight);
 
         var tinyScreen = MainWindow.CalculateWindowConstraints(725, 515, 400, 300);
         Equal(368d, tinyScreen.Width);
         Equal(268d, tinyScreen.Height);
-        Equal(368d, tinyScreen.MinWidth);
+        Equal(360d, tinyScreen.MinWidth);
         Equal(268d, tinyScreen.MinHeight);
     });
 
@@ -267,6 +267,8 @@ try
         File.WriteAllText(existing, "old");
 
         var merged = ExportService.MergeArtboardOutputs(SuccessResult(source), finalDirectory, autoRename: false);
+        True(merged.Success, merged.Error?.ToString() ?? "Artboard merge failed without an error.");
+        Equal(1, merged.OutputFiles.Count);
         Equal(existing, merged.OutputFiles[0]);
         Equal("new", File.ReadAllText(existing));
     });
@@ -530,6 +532,7 @@ try
             ["FILE_NAME"] = "export",
             ["SLICE_MODE"] = "false",
             ["RECURSIVE"] = "false",
+            ["SELECTED_ONLY"] = "false",
             ["FORMAT"] = "jpg",
             ["QUALITY"] = "80",
             ["RENAME"] = "true",
@@ -958,7 +961,7 @@ try
 }
 finally
 {
-    if (Directory.Exists(tempRoot))
+    if (failures.Count == 0 && Directory.Exists(tempRoot))
         Directory.Delete(tempRoot, recursive: true);
 }
 
@@ -969,6 +972,14 @@ if (failures.Count == 0)
     Environment.Exit(0);
 }
 
+Console.Error.WriteLine($"Failure samples retained at: {tempRoot}");
+try
+{
+    var testLog = Path.Combine(AppContext.BaseDirectory, "self-test.log");
+    File.WriteAllText(testLog, string.Join(Environment.NewLine, failures) + Environment.NewLine + "Samples: " + tempRoot);
+    Console.Error.WriteLine($"Full self-test log: {testLog}");
+}
+catch (Exception logError) { Console.Error.WriteLine("Could not write self-test log: " + logError.Message); }
 Console.Error.WriteLine($"{failures.Count} self-test(s) failed:");
 foreach (var failure in failures)
     Console.Error.WriteLine("- " + failure);
@@ -990,7 +1001,7 @@ void Run(string name, Action test)
     }
     catch (Exception ex)
     {
-        failures.Add($"{name}: {ex.Message}");
+        failures.Add($"{name}: {ex}");
     }
 }
 
@@ -1003,7 +1014,7 @@ async Task RunAsync(string name, Func<Task> test)
     }
     catch (Exception ex)
     {
-        failures.Add($"{name}: {ex.Message}");
+        failures.Add($"{name}: {ex}");
     }
 }
 

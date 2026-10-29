@@ -35,7 +35,6 @@ public sealed class AnimatedSegmentTrack : ContinuousBorder
 
     private readonly ContinuousCornerRenderer _indicatorRenderer = new();
     private readonly ContinuousCornerRenderer _hoverRenderer = new();
-    private readonly WheelStepAccumulator _wheel = new();
     private readonly Stopwatch _motion = new();
     private Rect _from;
     private Rect _current;
@@ -51,11 +50,9 @@ public sealed class AnimatedSegmentTrack : ContinuousBorder
 
     public AnimatedSegmentTrack()
     {
-        AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
         AddHandler(Button.ClickEvent, OnButtonClick, RoutingStrategies.Bubble);
         PointerExited += (_, _) =>
         {
-            _wheel.Reset();
             _hoverIndex = -1;
             InvalidateVisual();
         };
@@ -84,39 +81,7 @@ public sealed class AnimatedSegmentTrack : ContinuousBorder
             && string.Equals(Convert.ToString(left, CultureInfo.InvariantCulture),
                 Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
 
-    private void OnWheel(object? sender, PointerWheelEventArgs e)
-    {
-        if (!IsEffectivelyEnabled) return;
-        var options = Options;
-        if (!options.Any(CanSelect)) return;
-        // 轨道边界也消费滚轮，防止选到头以后突然滚动整个设置页。
-        e.Handled = true;
-        var steps = _wheel.Add(e.Delta);
-        if (steps == 0) return;
-        var selected = SelectedIndex(options);
-        if (selected < 0) return;
-        var next = selected;
-        var direction = Math.Sign(steps);
-        for (var step = 0; step < Math.Abs(steps); step++)
-        {
-            var candidate = next + direction;
-            while (candidate >= 0 && candidate < options.Length && !CanSelect(options[candidate]))
-                candidate += direction;
-            if (candidate < 0 || candidate >= options.Length) break;
-            next = candidate;
-        }
-        if (next != selected)
-        {
-            var button = options[next];
-            button.Command!.Execute(button.CommandParameter);
-        }
-        else MoveToSelection(feedback: true);
-    }
-
-    private static bool CanSelect(Button button)
-        => button.IsVisible && button.IsEffectivelyEnabled
-            && button.Command?.CanExecute(button.CommandParameter) == true;
-
+    // 分段选项只通过点击切换；滚轮保留给外层滚动区域。
     private void OnButtonClick(object? sender, RoutedEventArgs e)
     {
         // Click 路由可能早于 Command 执行；下一次 UI 调度再读取真实选择。
@@ -234,7 +199,6 @@ public sealed class AnimatedSegmentTrack : ContinuousBorder
         _animating = false;
         _hasSelection = false;
         _motion.Reset();
-        _wheel.Reset();
         base.OnDetachedFromVisualTree(e);
     }
 }

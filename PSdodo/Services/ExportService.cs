@@ -110,6 +110,7 @@ public sealed class ExportService : IExportService
         ImageName = source.ImageName,
         LayerExportWithDocName = source.LayerExportWithDocName,
         LayerExportRecursive = source.LayerExportRecursive,
+        LayerExportSelectedOnly = source.LayerExportSelectedOnly,
         LayerExportShowHint = source.LayerExportShowHint,
         ExportPathOption = source.ExportPathOption,
         ExpectedFileCount = source.ExpectedFileCount,
@@ -123,14 +124,18 @@ public sealed class ExportService : IExportService
     {
         if (result.OutputFiles.Count == 0) return result;
 
+        var movedFiles = new List<string>(result.OutputFiles.Count);
+        var currentSource = string.Empty;
+        var currentTarget = finalDirectory;
         try
         {
             Directory.CreateDirectory(finalDirectory);
-            var movedFiles = new List<string>(result.OutputFiles.Count);
             foreach (var sourcePath in result.OutputFiles)
             {
                 var desiredPath = Path.Combine(finalDirectory, Path.GetFileName(sourcePath));
                 var targetPath = autoRename ? GetAvailableFilePath(desiredPath) : desiredPath;
+                currentSource = sourcePath;
+                currentTarget = targetPath;
                 File.Move(sourcePath, targetPath, overwrite: !autoRename);
                 movedFiles.Add(targetPath);
             }
@@ -154,9 +159,9 @@ public sealed class ExportService : IExportService
             {
                 Success = false,
                 ReturnValue = result.ReturnValue,
-                ExportedCount = 0,
-                OutputFiles = [],
-                Error = new IOException("画板已生成，但归并到导出目录失败：" + ex.Message, ex),
+                ExportedCount = movedFiles.Count,
+                OutputFiles = movedFiles,
+                Error = new IOException($"画板归并失败：源={currentSource}；目标={currentTarget}；覆盖={!autoRename}；HResult=0x{ex.HResult:X8}；{ex.Message}", ex),
                 Logs = result.Logs
             };
         }
@@ -177,6 +182,7 @@ public sealed class ExportService : IExportService
         args["FILE_NAME"] = ScriptParameterInjector.EscapeJsString(s.FileName);
         args["SLICE_MODE"] = sliceMode ? "true" : "false";
         args["RECURSIVE"] = s.LayerExportRecursive ? "true" : "false";
+        args["SELECTED_ONLY"] = s.LayerExportRecursive && s.LayerExportSelectedOnly ? "true" : "false";
         return await ExecuteReceiptTaskAsync(ScriptLibrary.GetScript(sliceMode ? ScriptNames.ExportSlices : ScriptNames.ExportLayerBatch), args, s, onProgress, ct);
     }
 

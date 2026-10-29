@@ -51,8 +51,8 @@ if not exist "%TEST_EXE%" goto :test_failed
 if errorlevel 1 goto :test_failed
 
 echo.
-echo [2/2] Publishing the Windows x64 self-contained single file...
-dotnet publish "%PROJECT%" -c Release -r win-x64 --self-contained true --nologo --artifacts-path "%ARTIFACTS_DIR%" -p:PublishDir="%PUBLISH_DIR%/" -p:EnableReleaseObfuscation=false -p:PublishTrimmed=false
+echo [2/2] Publishing the Windows x64 framework-dependent single file...
+dotnet publish "%PROJECT%" -c Release -r win-x64 --self-contained false --nologo --artifacts-path "%ARTIFACTS_DIR%" -p:PublishDir="%PUBLISH_DIR%/" -p:EnableReleaseObfuscation=false -p:PublishTrimmed=false
 if errorlevel 1 goto :publish_failed
 if not exist "%PUBLISH_DIR%\%ASSEMBLY_NAME%.exe" goto :output_missing
 
@@ -66,13 +66,13 @@ echo.
 echo =========================================
 echo  output: %~dp0%APP_NAME%
 echo  size: %FINAL_SIZE% bytes
-echo  self-contained, end users need no .NET install
+echo  requires the .NET 10 x64 Runtime; runtime is not bundled
 echo  intermediate files stay in the temp folder, delete them any time
 echo =========================================
 exit /b 0
 
 :dotnet_missing
-set "ERROR_MESSAGE=dotnet was not found. Building needs the .NET 10 SDK; running the output does not."
+set "ERROR_MESSAGE=dotnet was not found. Building needs the .NET 10 SDK; running the output needs the .NET 10 x64 Runtime."
 goto :failed
 
 :dotnet_too_old

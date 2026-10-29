@@ -18,7 +18,7 @@ using PsExporter.Views;
 
 namespace PsExporter;
 
-public class App : Application
+public partial class App : Application
 {
     private static AppThemeMode _themeMode = AppThemeMode.Light;
 
@@ -43,6 +43,7 @@ public class App : Application
                 DataContext = provider.GetRequiredService<MainViewModel>(),
             };
             desktop.MainWindow = mainWindow;
+            InitializeTray(desktop, mainWindow, provider.GetRequiredService<MainViewModel>(), provider.GetRequiredService<FileLogger>());
             SingleInstance?.StartListening(() =>
                 Dispatcher.UIThread.Post(mainWindow.ActivateFromExternalRequest));
         }

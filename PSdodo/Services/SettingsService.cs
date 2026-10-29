@@ -114,6 +114,7 @@ public sealed class SettingsService : ISettingsService
 
     private static AppSettings CreateDefaults() => new()
     {
+        DefaultDestination = ExportDestination.DocumentFolder,
         DefaultExportPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
     };
 }

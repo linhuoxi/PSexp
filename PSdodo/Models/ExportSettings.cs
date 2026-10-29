@@ -31,6 +31,7 @@ public sealed class ExportSettings
     /// <summary>图层导出时是否使用文档名作为默认前缀</summary>
     public bool LayerExportWithDocName { get; set; } = true;
     public bool LayerExportRecursive { get; set; }
+    public bool LayerExportSelectedOnly { get; set; } = true;
 
     /// <summary>兼容旧设置字段；当前导出结果统一由软件内状态栏展示，不触发 Photoshop 提示。</summary>
     public bool LayerExportShowHint { get; set; }

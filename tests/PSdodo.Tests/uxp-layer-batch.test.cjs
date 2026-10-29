@@ -54,7 +54,7 @@ async function run(options = {}) {
         }
     } };
     const args = {
-        RECURSIVE: String(!!options.recursive), EXPORT_FOLDER_URL: "file:/output", RESULT_FOLDER_URL: "file:/task",
+        RECURSIVE: String(!!options.recursive), SELECTED_ONLY: "false", EXPORT_FOLDER_URL: "file:/output", RESULT_FOLDER_URL: "file:/task",
         FORMAT: options.format || "png", QUALITY: String(options.quality || 80), RENAME: String(options.rename !== false),
         IMAGE_NAME: options.imageName || "", FILE_NAME: "export", WITH_DOC_NAME: "true", SHOW_HINT: String(!!options.hint)
     };

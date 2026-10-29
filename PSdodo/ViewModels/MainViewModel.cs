@@ -40,12 +40,19 @@ public partial class MainViewModel : ViewModelBase
 
         var s = _settings.Load();
         ExportPath = s.DefaultExportPath;
+        Destination = s.DefaultDestination is { } savedDestination && Enum.IsDefined(savedDestination)
+            ? savedDestination
+            : string.IsNullOrWhiteSpace(s.DefaultExportPath) ? ExportDestination.DocumentFolder : ExportDestination.Custom;
         _format = s.DefaultFormat;
         Quality = s.DefaultQuality;
         AutoRename = s.DefaultAutoRename;
         LayerExportWithDocName = s.LayerExportWithDocName;
         LayerExportRecursive = s.LayerExportRecursive;
+        LayerExportSelectedOnly = s.LayerExportSelectedOnly;
         LayerExportShowHint = s.LayerExportShowHint;
+        AutoCheckForUpdates = s.AutoCheckForUpdates;
+        AutoDownloadUpdates = s.AutoDownloadUpdates;
+        CloseToTray = s.CloseToTray;
         EnableBlankDrag = s.EnableBlankDrag;
         EnableQualityHoverAnimation = s.EnableQualityHoverAnimation;
         DocumentSyncIntervalMs = s.DocumentSyncIntervalMs is 800 or 1200 or 2000 ? s.DocumentSyncIntervalMs : 1200;
@@ -185,12 +192,23 @@ public partial class MainViewModel : ViewModelBase
     public bool IsFileNameVisible => SelectedMode == ExportMode.Slices;
     public bool IsLayerMode => SelectedMode == ExportMode.Layers;
     [ObservableProperty] private bool _layerExportRecursive;
-    public string LayerModeHint => LayerExportRecursive
-        ? "递归导出组内图层，不重复导出图层组。"
-        : "仅导出最外层图层，图层组作为一张图片。";
-    partial void OnLayerExportRecursiveChanged(bool value)
+    [ObservableProperty] private bool _layerExportSelectedOnly = true;
+    public bool ShowLayerSelection => IsLayerMode && LayerExportRecursive;
+    public string LayerModeHint => !LayerExportRecursive ? "最外层导出，图层组整体保存。"
+        : LayerExportSelectedOnly ? "导出 PS 中选中的图层或图层组。" : "逐层导出，包含组内图层。";
+    partial void OnLayerExportSelectedOnlyChanged(bool value)
     {
         OnPropertyChanged(nameof(LayerModeHint));
+        OnPropertyChanged(nameof(CurrentModeHint));
+        SaveBehaviorSettings();
+    }
+    [RelayCommand] private void SetLayerExportSelectedOnly(object? value)
+        => LayerExportSelectedOnly = ParseBooleanCommandParameter(value);
+    partial void OnLayerExportRecursiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowLayerSelection));
+        OnPropertyChanged(nameof(LayerModeHint));
+        OnPropertyChanged(nameof(CurrentModeHint));
         SaveBehaviorSettings();
     }
     [RelayCommand] private void SetLayerExportRecursive(object? value)
@@ -218,7 +236,7 @@ public partial class MainViewModel : ViewModelBase
 
     public bool CanUseSlices => HasSlices && CanChangeMode;
 
-    public bool HasExportTarget => !string.IsNullOrWhiteSpace(ExportPath);
+    public bool HasExportTarget => !string.IsNullOrWhiteSpace(ResolvedExportPath);
 
     public string ApplicationTitle
     {
@@ -243,7 +261,7 @@ public partial class MainViewModel : ViewModelBase
         ExportMode.QuickExport => "导出当前 Photoshop 文档",
         ExportMode.AllArtboards => HasArtboards ? $"导出全部 {ArtboardCount} 个画板" : "当前文档没有画板",
         ExportMode.SelectedArtboards => HasArtboards ? "导出 Photoshop 当前选中的画板" : "当前文档没有画板",
-        ExportMode.Layers => "按一级图层分别生成图片",
+        ExportMode.Layers => LayerModeHint,
         ExportMode.Slices => HasSlices ? "按 Photoshop 原生用户切片范围导出图片" : "当前文档没有可用切片",
         _ => string.Empty
     };
@@ -275,7 +293,7 @@ public partial class MainViewModel : ViewModelBase
             if (!IsPsRunning) return "请先打开 Photoshop";
             if (!IsBridgeAvailable) return "Photoshop 连接不可用";
             if (!HasDocument) return "请在 Photoshop 中打开一个文档";
-            if (!HasExportTarget) return "请选择导出文件夹";
+            if (!HasExportTarget) return DestinationHint;
             if (SelectedMode is ExportMode.AllArtboards or ExportMode.SelectedArtboards && !HasArtboards)
                 return "当前文档没有画板";
             if (SelectedMode == ExportMode.Slices && !HasSlices)
@@ -322,7 +340,7 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty] private string _settingsStatusText = "偏好更改后自动保存";
     public string DefaultExportSummary => (_settings.Current.DefaultFormat == ExportFormat.Png
-        ? "PNG 无损" : $"JPG · 质量 {_settings.Current.DefaultQuality}%") + "\n" + _settings.Current.DefaultExportPath;
+        ? "PNG 无损" : $"JPG · 质量 {_settings.Current.DefaultQuality}%") + "\n" + DescribeDefaultDestination(_settings.Current);
 
     public string DataDirectory => _settings.DataDirectory;
 
@@ -351,6 +369,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsFileNameVisible));
         OnPropertyChanged(nameof(IsLayerMode));
+        OnPropertyChanged(nameof(ShowLayerSelection));
         OnPropertyChanged(nameof(IsImageNameVisible));
         OnPropertyChanged(nameof(ImageNameLabel));
         OnPropertyChanged(nameof(ImageNamePlaceholder));
@@ -390,6 +409,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsBusyChanged(bool value)
     {
+        RefreshUpdateCommands();
         OnPropertyChanged(nameof(CanRefreshStatus));
         RefreshStatusCommand.NotifyCanExecuteChanged();
     }
@@ -408,6 +428,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnHasDocumentChanged(bool value)
     {
+        OnPropertyChanged(nameof(DestinationHint));
         OnPropertyChanged(nameof(DocumentDisplayName));
         OnPropertyChanged(nameof(DocumentSizeDisplay));
     }
@@ -416,6 +437,7 @@ public partial class MainViewModel : ViewModelBase
     {
         HasDocument = false;
         DocumentName = string.Empty;
+        UpdateDocumentDirectory(string.Empty);
         DocumentSize = string.Empty;
         HasArtboards = false;
         ArtboardCount = 0;
@@ -465,6 +487,7 @@ public partial class MainViewModel : ViewModelBase
 
             HasDocument = true;
             DocumentName = doc.Name;
+            UpdateDocumentDirectory(doc.Path);
             DocumentSize = doc.Width > 0 ? $"{doc.Width} × {doc.Height}" : string.Empty;
             HasArtboards = doc.HasArtboards;
             ArtboardCount = doc.ArtboardCount;
@@ -586,7 +609,10 @@ public partial class MainViewModel : ViewModelBase
         if (provider is null) return;
         var result = await provider.OpenFolderPickerAsync(new FolderPickerOpenOptions { AllowMultiple = false, Title = "选择导出文件夹" });
         if (result.Count > 0)
+        {
+            Destination = ExportDestination.Custom;
             ExportPath = result[0].Path.LocalPath;
+        }
     }
 
     // ---------- 命令：保存为默认 ----------
@@ -614,6 +640,7 @@ public partial class MainViewModel : ViewModelBase
         return new AppSettings
         {
             DefaultExportPath = useCurrentExportValues ? ExportPath : current.DefaultExportPath,
+            DefaultDestination = useCurrentExportValues ? Destination : current.DefaultDestination,
             DefaultFormat = useCurrentExportValues ? Format : current.DefaultFormat,
             DefaultQuality = useCurrentExportValues ? Quality : current.DefaultQuality,
             DefaultAutoRename = AutoRename,
@@ -621,12 +648,16 @@ public partial class MainViewModel : ViewModelBase
             PollingIntervalMs = current.PollingIntervalMs,
             LayerExportWithDocName = LayerExportWithDocName,
             LayerExportRecursive = LayerExportRecursive,
+            LayerExportSelectedOnly = LayerExportSelectedOnly,
             LayerExportShowHint = LayerExportShowHint,
             AutoUseDocNameAsPrefix = AutoUseDocNameAsPrefix,
             ThemeMode = ThemeMode,
             StartAlwaysOnTop = IsAlwaysOnTop,
             AutoRefreshOnActivated = AutoRefreshOnActivated,
             EnableEdgeSnap = EnableEdgeSnap,
+            AutoCheckForUpdates = AutoCheckForUpdates,
+            AutoDownloadUpdates = AutoDownloadUpdates,
+            CloseToTray = CloseToTray,
             EnableBlankDrag = EnableBlankDrag,
             EnableQualityHoverAnimation = EnableQualityHoverAnimation,
             DocumentSyncIntervalMs = DocumentSyncIntervalMs,
@@ -681,6 +712,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ShowSettings()
     {
+        if (IsUpdateAvailable) SelectedSettingsSection = 3;
         IsViewSetting = true;
     }
 
@@ -693,7 +725,7 @@ public partial class MainViewModel : ViewModelBase
         if (!HasDocument) return;
 
         var exportSettings = Snapshot();
-        AppendLog("Info", $"导出请求 mode={SelectedMode} parameters={System.Text.Json.JsonSerializer.Serialize(exportSettings)}");
+        AppendLog("Info", $"导出请求 mode={SelectedMode} destination={Destination} parameters={System.Text.Json.JsonSerializer.Serialize(exportSettings)}");
         if (SelectedMode == ExportMode.QuickExport)
             exportSettings.ExpectedFileCount = 1;
         if (SelectedMode == ExportMode.AllArtboards)
@@ -705,7 +737,8 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        ExportPath = exportSettings.ExportPath;
+        // Normalizing a preset must never replace the remembered custom directory.
+        if (IsCustomDestination) ExportPath = exportSettings.ExportPath;
         _exportCts?.Dispose();
         _exportCts = new CancellationTokenSource();
         switch (SelectedMode)
@@ -775,7 +808,7 @@ public partial class MainViewModel : ViewModelBase
         string title,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(ExportPath))
+        if (string.IsNullOrWhiteSpace(ResolvedExportPath))
         {
             AppendLog("Error", "请先选择导出路径");
             return;
@@ -810,7 +843,7 @@ public partial class MainViewModel : ViewModelBase
                 _lastSuccessfulExportDirectory = result.OutputFiles
                     .Select(Path.GetDirectoryName)
                     .FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
-                    ?? ExportPath;
+                    ?? ResolvedExportPath;
                 CanOpenExportFolder = Directory.Exists(_lastSuccessfulExportDirectory);
                 ExportStatusText = $"{title} 完成 · 共 {ExportedCount} 个文件";
                 AppendLog("Info", $"✔ {title} 完成");
@@ -874,7 +907,7 @@ public partial class MainViewModel : ViewModelBase
 
         return new ExportSettings
         {
-            ExportPath = ExportPath,
+            ExportPath = ResolvedExportPath,
             DocumentName = DocumentName,
             Format = Format,
             Quality = Quality,
@@ -883,6 +916,7 @@ public partial class MainViewModel : ViewModelBase
             ImageName = effectiveImageName,
             LayerExportWithDocName = LayerExportWithDocName,
             LayerExportRecursive = LayerExportRecursive,
+            LayerExportSelectedOnly = LayerExportSelectedOnly,
             LayerExportShowHint = LayerExportShowHint,
             ExportPathOption = ExportPathOption
         };
@@ -907,12 +941,13 @@ public partial class MainViewModel : ViewModelBase
         return bool.TryParse(value?.ToString(), out var parsed) && parsed;
     }
 
-    partial void OnExportPathChanged(string value) => RefreshCanExecute();
+    partial void OnExportPathChanged(string value) => NotifyExportDestinationChanged();
 
     partial void OnFileNameChanged(string value) => RefreshCanExecute();
 
     partial void OnIsExportingChanged(bool value)
     {
+        RefreshUpdateCommands();
         OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(ReadinessText));
         OnPropertyChanged(nameof(EffectiveTopmost));
@@ -1023,7 +1058,7 @@ public partial class MainViewModel : ViewModelBase
         {
             var path = Path.GetFullPath(
                 string.IsNullOrWhiteSpace(_lastSuccessfulExportDirectory)
-                    ? ExportPath
+                    ? ResolvedExportPath
                     : _lastSuccessfulExportDirectory);
             if (!Directory.Exists(path))
             {
