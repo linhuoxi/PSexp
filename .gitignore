@@ -8,3 +8,30 @@ TestResults/
 
 # 编译.bat 会把成品放在自己旁边，50M 二进制不入库
 /PSexp*.exe
+
+# IDE state and local configuration
+.vs/
+.idea/
+*.userosscache
+*.sln.docstates
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+
+# Generated artifacts and temporary files
+**/TestResults/
+/test-output/
+/artifacts/
+/publish/
+*.tmp
+*.bak
+*.new
+*.rollback
+
+# Personal records belong outside this repository
+/project-docs/
+/Git接通与开源计划.md
+/重启评估.md
