@@ -1,0 +1,4 @@
+# cmd.exe resumes batch parsing from a stored byte offset and mis-handles LF-only files,
+# so Windows batch scripts must always check out with CRLF, on every platform.
+*.bat text eol=crlf
+*.cmd text eol=crlf
