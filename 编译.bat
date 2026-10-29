@@ -33,7 +33,10 @@ if %DOTNET_MAJOR% LSS 10 goto :dotnet_too_old
 rem The output name comes from the project file, so it is not written down twice.
 call :read_tag AssemblyName ASSEMBLY_NAME
 if errorlevel 1 goto :csproj_unreadable
-echo       assembly: %ASSEMBLY_NAME%
+call :read_tag AssemblyTitle APP_TITLE
+if errorlevel 1 goto :csproj_unreadable
+set "APP_NAME=%APP_TITLE%.exe"
+echo       assembly: %ASSEMBLY_NAME%   finished file: %APP_NAME%
 
 echo.
 echo [1/2] Building and running the automated tests...
@@ -53,9 +56,16 @@ dotnet publish "%PROJECT%" -c Release -r win-x64 --self-contained true --nologo 
 if errorlevel 1 goto :publish_failed
 if not exist "%PUBLISH_DIR%\%ASSEMBLY_NAME%.exe" goto :output_missing
 
+rem The finished EXE goes next to this script, which is where people look for it.
+copy /b /y "%PUBLISH_DIR%\%ASSEMBLY_NAME%.exe" "%~dp0%APP_NAME%" >nul
+if errorlevel 1 goto :copy_failed
+if not exist "%~dp0%APP_NAME%" goto :copy_failed
+for %%F in ("%~dp0%APP_NAME%") do set "FINAL_SIZE=%%~zF"
+
 echo.
 echo =========================================
-echo  output: %PUBLISH_DIR%\%ASSEMBLY_NAME%.exe
+echo  output: %~dp0%APP_NAME%
+echo  size: %FINAL_SIZE% bytes
 echo  self-contained, end users need no .NET install
 echo  intermediate files stay in the temp folder, delete them any time
 echo =========================================
@@ -87,6 +97,10 @@ goto :failed
 
 :output_missing
 set "ERROR_MESSAGE=Publish did not produce %ASSEMBLY_NAME%.exe."
+goto :failed
+
+:copy_failed
+set "ERROR_MESSAGE=Build succeeded but the EXE could not be copied next to this script. Close PSexp first, then run again."
 goto :failed
 
 :failed

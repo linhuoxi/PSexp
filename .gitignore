@@ -5,3 +5,6 @@
 *.pdb
 *.log
 TestResults/
+
+# 编译.bat 会把成品放在自己旁边，50M 二进制不入库
+/PSexp*.exe
