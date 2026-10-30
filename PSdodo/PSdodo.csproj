@@ -18,12 +18,14 @@
     <PublishSelfContained Condition="'$(PublishSelfContained)' == ''">false</PublishSelfContained>
     <!-- 是否自包含和目标 RID 由发布命令指定，避免测试项目引用时被视为自包含 EXE。 -->
     <PublishSingleFile>true</PublishSingleFile>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- .NET SDK 仅允许自包含单文件使用压缩；默认依赖系统 .NET 的发布必须关闭。 -->
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' == 'true' and '$(PublishSingleFile)' == 'true'">true</EnableCompressionInSingleFile>
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' != 'true' or '$(PublishSingleFile)' != 'true'">false</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <!-- 无需把托管程序集全部解压到临时目录；可减小启动 I/O，并保留单文件语义 -->
     <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
     <!-- 源码已按 MIT 公开，混淆不再具有保护意义，默认关闭；需要时由发布 BAT 显式传 true 启用。 -->
-    <!-- 内置压缩保持开启：它只影响体积，不隐藏代码。 -->
+    <!-- 内置压缩按发布模式启用：它只影响体积，不隐藏代码。 -->
     <EnableReleaseObfuscation Condition="'$(EnableReleaseObfuscation)' == '' and '$(Configuration)' == 'Release'">false</EnableReleaseObfuscation>
     <!-- 默认稳定模式不裁剪；仅由 BAT 的 PSexpEnableTrim=1 显式启用实验裁剪。 -->
     <PublishTrimmed Condition="'$(PublishTrimmed)' == ''">false</PublishTrimmed>
