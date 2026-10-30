@@ -967,7 +967,7 @@ finally
 
 if (failures.Count == 0)
 {
-    Console.WriteLine("All PSexp v3.0 self-tests passed.");
+    Console.WriteLine($"All PSexp v{UpdateService.CurrentVersion} self-tests passed.");
     // Avalonia/原生依赖偶尔会在特定目录环境残留前台线程；发布前自测完成后必须可靠退出。
     Environment.Exit(0);
 }

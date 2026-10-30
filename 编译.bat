@@ -33,9 +33,9 @@ if %DOTNET_MAJOR% LSS 10 goto :dotnet_too_old
 rem The output name comes from the project file, so it is not written down twice.
 call :read_tag AssemblyName ASSEMBLY_NAME
 if errorlevel 1 goto :csproj_unreadable
-call :read_tag AssemblyTitle APP_TITLE
+call :read_tag Version APP_VERSION
 if errorlevel 1 goto :csproj_unreadable
-set "APP_NAME=%APP_TITLE%.exe"
+set "APP_NAME=PSexp v%APP_VERSION%.exe"
 echo       assembly: %ASSEMBLY_NAME%   finished file: %APP_NAME%
 
 echo.

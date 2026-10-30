@@ -12,8 +12,8 @@
     <AssemblyName>PSexpV3</AssemblyName>
     <RootNamespace>PsExporter</RootNamespace>
     <Version>3.0.2</Version>
-    <AssemblyTitle>PSexp v3.0</AssemblyTitle>
-    <Product>PSexp v3.0</Product>
+    <AssemblyTitle>PSexp v$(Version)</AssemblyTitle>
+    <Product>PSexp v$(Version)</Product>
     <!-- 默认单文件只捆绑应用依赖，不捆绑 .NET；运行需要 .NET 10 x64 Runtime。 -->
     <PublishSelfContained Condition="'$(PublishSelfContained)' == ''">false</PublishSelfContained>
     <!-- 是否自包含和目标 RID 由发布命令指定，避免测试项目引用时被视为自包含 EXE。 -->
