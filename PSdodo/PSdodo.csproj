@@ -53,6 +53,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\Scripts\**\*.jsx" />
     <EmbeddedResource Include="Resources\Scripts\**\*.psjs" />
+    <EmbeddedResource Include="Resources\Updates\update-public-key.json" />
   </ItemGroup>
 
   <ItemGroup>

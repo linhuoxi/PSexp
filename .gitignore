@@ -35,3 +35,12 @@ TestResults/
 /project-docs/
 /Git接通与开源计划.md
 /重启评估.md
+
+# Release credentials stay outside the repository; these are defense-in-depth exclusions.
+*.pem
+*.dpapi
+*.p8
+**/id_rsa*
+**/id_ed25519*
+**/server.local.json
+/release-tools/

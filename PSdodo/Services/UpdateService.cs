@@ -10,18 +10,41 @@ using PsExporter.Core.Logging;
 
 namespace PsExporter.Services;
 
+// Immutable metadata can only be created inside the verified-manifest pipeline.
 public sealed class UpdateManifest
 {
-    [JsonPropertyName("name")] public string Name { get; set; } = "";
-    [JsonPropertyName("version")] public string Version { get; set; } = "";
-    [JsonPropertyName("download_url")] public string DownloadUrl { get; set; } = "";
-    [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
-    [JsonPropertyName("size")] public long Size { get; set; }
-    [JsonPropertyName("changelog")] public string Changelog { get; set; } = "";
-    [JsonPropertyName("requires_dotnet")] public bool RequiresDotNet { get; set; } = true;
+    public string Name { get; }
+    public string Version { get; }
+    public string DownloadUrl { get; }
+    public string Sha256 { get; }
+    public long Size { get; }
+    public string Changelog { get; }
+    public bool RequiresDotNet { get; }
+
+    internal UpdateManifest(UpdateManifestData data)
+    {
+        Name = data.Name ?? "";
+        Version = data.Version ?? "";
+        DownloadUrl = data.DownloadUrl ?? "";
+        Sha256 = data.Sha256 ?? "";
+        Size = data.Size;
+        Changelog = data.Changelog ?? "";
+        RequiresDotNet = data.RequiresDotNet;
+    }
 }
 
-/// <summary>HTTPS 版本检测、限量下载、哈希校验与退出后的安全替换。</summary>
+internal sealed class UpdateManifestData
+{
+    [JsonPropertyName("name")] public string? Name { get; init; }
+    [JsonPropertyName("version")] public string? Version { get; init; }
+    [JsonPropertyName("download_url")] public string? DownloadUrl { get; init; }
+    [JsonPropertyName("sha256")] public string? Sha256 { get; init; }
+    [JsonPropertyName("size")] public long Size { get; init; }
+    [JsonPropertyName("changelog")] public string? Changelog { get; init; }
+    [JsonPropertyName("requires_dotnet")] public bool RequiresDotNet { get; init; } = true;
+}
+
+/// <summary>固定公钥验证更新清单、限量下载、哈希校验与退出后的安全替换。</summary>
 public sealed class UpdateService(FileLogger logger)
 {
     public const string ManifestUrl = "https://yusnip.top/psexp/version.json";
@@ -51,7 +74,7 @@ public sealed class UpdateService(FileLogger logger)
             if (limited.Length + count > 128 * 1024) throw new IOException("更新清单过大");
             limited.Write(buffer, 0, count);
         }
-        var info = JsonSerializer.Deserialize<UpdateManifest>(limited.ToArray()) ?? throw new IOException("更新清单为空");
+        var info = UpdateSignature.ReadVerified(limited.ToArray());
         if (info.Name != "PSexp" || !Version.TryParse(info.Version, out var parsed) || parsed.Build < 0)
             throw new IOException("更新清单的软件或版本不正确");
         if (!Uri.TryCreate(info.DownloadUrl, UriKind.Absolute, out var uri) || uri.Scheme != "https"

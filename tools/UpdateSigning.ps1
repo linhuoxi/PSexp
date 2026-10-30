@@ -1,0 +1,71 @@
+# Public signing tools. The private key is kept outside the repository and protected by Windows DPAPI.
+Set-StrictMode -Version Latest
+
+function Get-PSexpSigningKeyPath {
+    if (-not [string]::IsNullOrWhiteSpace($env:PSexpSigningKeyFile)) {
+        return [IO.Path]::GetFullPath($env:PSexpSigningKeyFile)
+    }
+    return Join-Path $env:LOCALAPPDATA 'PSexp\ReleaseSigning\update-key.dpapi'
+}
+
+function Get-PSexpUpdateSigner([string]$Repository) {
+    $keyFile = Get-PSexpSigningKeyPath
+    $repoPrefix = [IO.Path]::GetFullPath($Repository).TrimEnd('\') + '\'
+    if ($keyFile.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Private signing keys must stay outside the source repository.'
+    }
+    if (-not (Test-Path -LiteralPath $keyFile -PathType Leaf)) {
+        throw 'Release signing key missing. Do not generate a replacement for an existing release key. Restore the original signing environment.'
+    }
+    $trustPath = Join-Path $Repository 'PSdodo\Resources\Updates\update-public-key.json'
+    $trusted = [IO.File]::ReadAllText($trustPath) | ConvertFrom-Json
+    if ($trusted.algorithm -ne 'RSA-SHA256-PKCS1') { throw 'Unsupported release signing algorithm.' }
+    Add-Type -AssemblyName System.Security
+    $plain = $null
+    $rsa = $null
+    try {
+        $plain = [Security.Cryptography.ProtectedData]::Unprotect(
+            [IO.File]::ReadAllBytes($keyFile), $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $rsa = [Security.Cryptography.RSACryptoServiceProvider]::new(3072)
+        $rsa.PersistKeyInCsp = $false
+        $rsa.FromXmlString([Text.Encoding]::UTF8.GetString($plain))
+        if ($rsa.KeySize -ne 3072 -or $rsa.ToXmlString($false) -cne $trusted.public_key_xml) {
+            throw 'Signing key does not match the public key embedded in this source tree.'
+        }
+        return $rsa
+    } catch {
+        if ($null -ne $rsa) { $rsa.Dispose() }
+        throw
+    } finally {
+        if ($null -ne $plain) { [Array]::Clear($plain, 0, $plain.Length) }
+    }
+}
+
+function Assert-PSexpSigningReady([string]$Repository) {
+    $rsa = Get-PSexpUpdateSigner $Repository
+    try { Write-Host 'Release signing identity available; private key will not be uploaded.' }
+    finally { $rsa.Dispose() }
+}
+
+function New-PSexpSignedUpdateManifest([System.Collections.IDictionary]$Manifest, [string]$Repository) {
+    $rsa = Get-PSexpUpdateSigner $Repository
+    try {
+        $trusted = [IO.File]::ReadAllText((Join-Path $Repository 'PSdodo\Resources\Updates\update-public-key.json')) | ConvertFrom-Json
+        $payload = [Text.Encoding]::UTF8.GetBytes(($Manifest | ConvertTo-Json -Depth 8 -Compress))
+        if ($payload.Length -gt 49152) { throw 'Signed update payload is too large.' }
+        $prefix = [Text.Encoding]::UTF8.GetBytes("PSexp update manifest v1`n")
+        $authenticated = [byte[]]::new($prefix.Length + $payload.Length)
+        [Array]::Copy($prefix, 0, $authenticated, 0, $prefix.Length)
+        [Array]::Copy($payload, 0, $authenticated, $prefix.Length, $payload.Length)
+        $signature = $rsa.SignData($authenticated, [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        $result = [ordered]@{}
+        # Legacy readers can see flat fields; new clients use only the authenticated inner payload.
+        foreach ($field in $Manifest.Keys) { $result[$field] = $Manifest[$field] }
+        $result['signed_update'] = [ordered]@{
+            schema = 1; key_id = $trusted.key_id; algorithm = 'RSA-SHA256-PKCS1'
+            payload = [Convert]::ToBase64String($payload); signature = [Convert]::ToBase64String($signature)
+        }
+        return $result
+    } finally { $rsa.Dispose() }
+}
