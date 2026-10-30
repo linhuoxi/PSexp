@@ -35,9 +35,6 @@ public sealed class AppSettings
 
     public string? PhotoshopExePath { get; set; }
 
-    /// <summary>文档状态轮询间隔（毫秒）</summary>
-    public int PollingIntervalMs { get; set; } = 3000;
-
     /// <summary>导出一级图层时文件名带文档名前缀</summary>
     public bool LayerExportWithDocName { get; set; } = true;
     public bool LayerExportRecursive { get; set; }
@@ -55,7 +52,7 @@ public sealed class AppSettings
     /// <summary>启动后保持窗口置顶</summary>
     public bool StartAlwaysOnTop { get; set; }
 
-    /// <summary>窗口回到前台时自动识别一次当前文档</summary>
+    /// <summary>PSexp 主窗口获得前台焦点时，自动执行一次 UXP 文档识别</summary>
     public bool AutoRefreshOnActivated { get; set; } = true;
 
     /// <summary>拖拽窗口贴到屏幕边缘吸附与 Q 弹动效</summary>
@@ -66,7 +63,6 @@ public sealed class AppSettings
     public bool CloseToTray { get; set; } = true;
     public bool EnableBlankDrag { get; set; } = true;
     public bool EnableQualityHoverAnimation { get; set; } = true;
-    public int DocumentSyncIntervalMs { get; set; } = 1200;
     public int DockRetractDelayMs { get; set; } = 420;
 
     public WindowPlacementState? WindowPlacement { get; set; }

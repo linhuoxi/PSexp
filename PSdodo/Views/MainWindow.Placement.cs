@@ -158,6 +158,7 @@ public partial class MainWindow
         }
         UpdateStatusAnimationState(restartActiveClocks: true);
         PersistWindowPlacement();
+        QueueForegroundDocumentProbe();
         if (_activateAfterPlacementRestore)
         {
             _activateAfterPlacementRestore = false;

@@ -948,16 +948,16 @@
                                         <StackPanel Spacing="12">
                                             <TextBlock Text="Photoshop" Classes="settings-group-title"/>
                                             <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                <TextBlock Text="自动同步文档" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="Photoshop 在前台且停止输入后同步；按键按住、绘制和导出期间暂停。"/>
+                                                <TextBlock Text="前台识别" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="PSexp 主窗口获得前台焦点时识别一次；后台、托盘隐藏或仅悬停展开时不自动识别。"/>
                                                 <Panel Grid.Column="1">
                                                     <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoRefreshOnActivated}">
                                                         <Grid ColumnDefinitions="*,*">
-                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="False" AutomationProperties.Name="自动同步文档：关闭">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="False" AutomationProperties.Name="前台识别：关闭">
                                                                 <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
                                                                     <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoRefreshOnActivated, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
                                                                 </controls:ContinuousBorder>
                                                             </Button>
-                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="True" AutomationProperties.Name="自动同步文档：开启">
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="True" AutomationProperties.Name="前台识别：开启">
                                                                 <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
                                                                     <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoRefreshOnActivated, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
                                                                 </controls:ContinuousBorder>
@@ -965,28 +965,6 @@
                                                         </Grid>
                                                     </controls:AnimatedSegmentTrack>
                                                 </Panel>
-                                            </Grid>
-                                            <Grid Classes="settings-row" ColumnDefinitions="*,168" ColumnSpacing="12">
-                                                <TextBlock Text="检查间隔" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="控制检查频率；同步会等待操作空闲，避免打断快捷键和绘制。"/>
-                                                <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding DocumentSyncIntervalMs}" IsEnabled="{Binding AutoRefreshOnActivated}">
-                                                    <Grid ColumnDefinitions="*,*,*">
-                                                        <Button Grid.Column="0" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="800">
-                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                <TextBlock Text="0.8 秒" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=800}"/>
-                                                            </controls:ContinuousBorder>
-                                                        </Button>
-                                                        <Button Grid.Column="1" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="1200">
-                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                <TextBlock Text="1.2 秒" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=1200}"/>
-                                                            </controls:ContinuousBorder>
-                                                        </Button>
-                                                        <Button Grid.Column="2" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="2000">
-                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                <TextBlock Text="2 秒" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=2000}"/>
-                                                            </controls:ContinuousBorder>
-                                                        </Button>
-                                                    </Grid>
-                                                </controls:AnimatedSegmentTrack>
                                             </Grid>
                                         </StackPanel>
                                     </controls:ContinuousBorder>

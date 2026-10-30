@@ -65,7 +65,6 @@ public partial class MainViewModel : ViewModelBase
         CloseToTray = s.CloseToTray;
         EnableBlankDrag = s.EnableBlankDrag;
         EnableQualityHoverAnimation = s.EnableQualityHoverAnimation;
-        DocumentSyncIntervalMs = s.DocumentSyncIntervalMs is 800 or 1200 or 2000 ? s.DocumentSyncIntervalMs : 1200;
         DockRetractDelayMs = s.DockRetractDelayMs is 250 or 420 or 800 ? s.DockRetractDelayMs : 420;
         AutoUseDocNameAsPrefix = s.AutoUseDocNameAsPrefix;
         IsAlwaysOnTop = s.StartAlwaysOnTop;
@@ -84,8 +83,7 @@ public partial class MainViewModel : ViewModelBase
         AvailableFormats = Enum.GetValues<ExportFormat>();
         AvailableModes = Enum.GetValues<ExportMode>();
 
-        // 启动时探测一次，之后改为手动刷新（避免后台轮询干扰 PS）
-        _ = RefreshStatusAsync(silent: false);
+        // 文档识别由主窗口真正获得前台焦点触发；构造模型时不派发脚本。
     }
 
     // ---------- PS 状态 ----------
@@ -332,20 +330,14 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty] private bool _enableBlankDrag = true;
     [ObservableProperty] private bool _enableQualityHoverAnimation = true;
-    [ObservableProperty] private int _documentSyncIntervalMs = 1200;
     [ObservableProperty] private int _dockRetractDelayMs = 420;
 
     partial void OnEnableBlankDragChanged(bool value) => SaveBehaviorSettings();
     partial void OnEnableQualityHoverAnimationChanged(bool value) => SaveBehaviorSettings();
-    partial void OnDocumentSyncIntervalMsChanged(int value) => SaveBehaviorSettings();
     partial void OnDockRetractDelayMsChanged(int value) => SaveBehaviorSettings();
 
     [RelayCommand] private void SetEnableBlankDrag(object? value) => EnableBlankDrag = ParseBooleanCommandParameter(value);
     [RelayCommand] private void SetEnableQualityHoverAnimation(object? value) => EnableQualityHoverAnimation = ParseBooleanCommandParameter(value);
-    [RelayCommand] private void SetDocumentSyncInterval(object? value)
-    {
-        if (int.TryParse(value?.ToString(), out var ms) && ms is 800 or 1200 or 2000) DocumentSyncIntervalMs = ms;
-    }
     [RelayCommand] private void SetDockRetractDelay(object? value)
     {
         if (int.TryParse(value?.ToString(), out var ms) && ms is 250 or 420 or 800) DockRetractDelayMs = ms;
@@ -495,7 +487,7 @@ public partial class MainViewModel : ViewModelBase
     }
 
     // ---------- 状态机：自动探测 ----------
-    private async Task RefreshStatusAsync(bool silent)
+    private async Task RefreshStatusAsync(bool silent, bool useUxp = false, Func<bool>? canDispatch = null)
     {
         if (!CanRefreshStatus) return;
         IsRefreshingStatus = true;
@@ -515,7 +507,11 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            var (doc, probeResult) = await _ps.ProbeDocumentInfoAsync();
+            var (doc, probeResult) = useUxp
+                ? await _ps.ProbeDocumentInfoWithUxpAsync(canDispatch)
+                : await _ps.ProbeDocumentInfoAsync();
+            // Losing foreground before dispatch cancels this activation, rather than reporting a document failure.
+            if (probeResult.Error is OperationCanceledException) return;
             // 把脚本端日志透传到 UI 日志面板
             foreach (var log in probeResult.Logs)
                 AppendLog(log.Level.ToString(), log.Message);
@@ -543,7 +539,7 @@ public partial class MainViewModel : ViewModelBase
             ArtboardCount = doc.ArtboardCount;
             HasSlices = doc.HasSlices;
 
-            // 诊断：仅在文档状态变化时记录，避免每轮轮询刷屏
+            // 诊断：仅在文档状态变化时记录，避免重复刷新刷屏
             if (doc.IsOpen != _lastHasDocument || doc.Name != _lastDocName)
             {
                 AppendLog("Debug", $"文档状态变化: HasDocument={HasDocument} DocName='{doc.Name}' Artboards={doc.ArtboardCount} Slices={doc.HasSlices}");
@@ -576,70 +572,15 @@ public partial class MainViewModel : ViewModelBase
         bool suppressNextActivation)
         => enabled && !isBusy && !isRefreshing && !suppressNextActivation;
 
-    public async Task RefreshOnActivationAsync()
+    public async Task RefreshOnActivationAsync(Func<bool>? canDispatch = null)
     {
         var suppress = _suppressNextActivationRefresh;
         _suppressNextActivationRefresh = false;
-        if (!_ps.SupportsBackgroundIdentityProbe || !CanRefreshOnActivation(
-                AutoRefreshOnActivated,
-                IsBusy,
-                IsRefreshingStatus,
-                suppress))
-            return;
+        if (!CanRefreshOnActivation(AutoRefreshOnActivated, IsBusy, IsRefreshingStatus, suppress)
+            || canDispatch?.Invoke() == false) return;
 
-        await RefreshStatusAsync(silent: true);
-    }
-
-    private bool _documentSyncInProgress;
-    private string _autoDocumentKey = "";
-    private bool _hasUxpSyncSnapshot;
-    private string _lastUxpSyncWindow = string.Empty;
-    private uint _lastUxpSyncInput;
-    private DateTime _lastUxpSyncUtc;
-
-    public async Task SyncPhotoshopDocumentAsync()
-    {
-        if (!AutoRefreshOnActivated || IsBusy || IsRefreshingStatus || _documentSyncInProgress) return;
-        if (!PhotoshopFocus.TryGetIdleForegroundSnapshot(out var windowKey, out var inputTick)) return;
-        _documentSyncInProgress = true;
-        try
-        {
-            if (!_ps.SupportsBackgroundIdentityProbe)
-            {
-                // Launch once after new activity settles, not on every timer tick. Read-only UXP scripts
-                // still run in Photoshop's scripting engine and can interrupt shortcuts when dispatched repeatedly.
-                if (_hasUxpSyncSnapshot && _lastUxpSyncInput == inputTick && _lastUxpSyncWindow == windowKey
-                    && (DateTime.UtcNow - _lastUxpSyncUtc).TotalSeconds < 60) return;
-                _hasUxpSyncSnapshot = true;
-                _lastUxpSyncInput = inputTick;
-                _lastUxpSyncWindow = windowKey;
-                _lastUxpSyncUtc = DateTime.UtcNow;
-                await RefreshStatusAsync(silent: true);
-                // Account for input that the dispatch itself may have caused, without queuing another probe.
-                if (PhotoshopFocus.TryGetIdleForegroundSnapshot(out var currentWindow, out var currentInput))
-                {
-                    _lastUxpSyncInput = currentInput;
-                    _lastUxpSyncWindow = currentWindow;
-                }
-                return;
-            }
-            var identity = await _ps.ExecuteScriptAsync("probe/document_identity", new Dictionary<string,string>());
-            if (IsBusy || IsRefreshingStatus) return;
-            if (!identity.Success)
-            {
-                RecordDocumentProbeFailure(identity.Error);
-                return;
-            }
-            if (_autoDocumentKey != identity.ReturnValue || !string.IsNullOrEmpty(DocumentProbeError))
-            {
-                await RefreshStatusAsync(silent: true);
-                if (string.IsNullOrEmpty(DocumentProbeError) && ((identity.ReturnValue == "none" && !HasDocument)
-                    || (HasDocument && identity.ReturnValue.EndsWith("|" + DocumentName, StringComparison.Ordinal))))
-                    _autoDocumentKey = identity.ReturnValue;
-            }
-        }
-        catch (Exception error) { RecordDocumentProbeFailure(error); }
-        finally { _documentSyncInProgress = false; }
+        AppendLog("Debug", "PSexp 主窗口获得前台焦点，执行一次 UXP 文档识别");
+        await RefreshStatusAsync(silent: true, useUxp: true, canDispatch: canDispatch);
     }
 
     private void SuppressNextActivationRefresh() => _suppressNextActivationRefresh = true;
@@ -732,7 +673,6 @@ public partial class MainViewModel : ViewModelBase
             LastSettingsSection = SelectedSettingsSection,
             ShowSettingsOnStartup = IsViewSetting,
             PhotoshopExePath = current.PhotoshopExePath,
-            PollingIntervalMs = current.PollingIntervalMs,
             LayerExportWithDocName = LayerExportWithDocName,
             LayerExportRecursive = LayerExportRecursive,
             LayerExportSelectedOnly = LayerExportSelectedOnly,
@@ -747,7 +687,6 @@ public partial class MainViewModel : ViewModelBase
             CloseToTray = CloseToTray,
             EnableBlankDrag = EnableBlankDrag,
             EnableQualityHoverAnimation = EnableQualityHoverAnimation,
-            DocumentSyncIntervalMs = DocumentSyncIntervalMs,
             DockRetractDelayMs = DockRetractDelayMs,
             WindowPlacement = _windowPlacement,
             WindowWidth = _windowWidth,

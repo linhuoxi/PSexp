@@ -29,7 +29,6 @@ public partial class MainWindow : Window
     private readonly Stopwatch _qualityFeedbackClock = new();
     private bool _qualityFeedbackFramePending;
     private double _qualityFeedbackStartScale = 1;
-    private readonly DispatcherTimer _documentSyncTimer;
     private readonly DispatcherTimer _windowSizeSaveTimer;
     private readonly DispatcherTimer _statusAnimationTimer;
     private readonly DispatcherTimer _edgeHoverTimer;
@@ -69,7 +68,7 @@ public partial class MainWindow : Window
     private bool _isRefreshSettling;
     private double _refreshSettleStartAngle;
     private bool _hasRestoredWindowSize;
-    private bool _hasHandledInitialActivation;
+    private bool _hasProbedCurrentActivation;
     private bool _hasConstraintScreenSignature;
     private PixelRect _constraintScreenBounds;
     private double _constraintScreenScaling;
@@ -168,13 +167,6 @@ public partial class MainWindow : Window
         PsStatusDot.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
         RefreshIcon.RenderTransform = _refreshIconRotateTransform;
 
-        _documentSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
-        _documentSyncTimer.Tick += async (_, _) =>
-        {
-            if (!_isClosing && !_isSnapAnimating && DataContext is MainViewModel model)
-                await model.SyncPhotoshopDocumentAsync();
-        };
-        _documentSyncTimer.Start();
         _windowSizeSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _windowSizeSaveTimer.Tick += OnWindowSizeSaveTimerTick;
         _statusAnimationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
@@ -190,6 +182,7 @@ public partial class MainWindow : Window
         Activated += OnWindowActivated;
         Deactivated += (_, _) =>
         {
+            _hasProbedCurrentActivation = false;
             EndInputEditing();
             if (DataContext is MainViewModel model) model.FlushParameterMemory();
         };
@@ -200,7 +193,6 @@ public partial class MainWindow : Window
         Screens.Changed += OnScreensChanged;
         DataContextChanged += OnAnimationDataContextChanged;
         AttachAnimationViewModel(DataContext as MainViewModel);
-        if (DataContext is MainViewModel settingsModel) _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(settingsModel.DocumentSyncIntervalMs);
         AttachQualityMeterPointerHandlers();
         QualityMeter.RenderTransform = _qualityFeedbackScale;
         QualityMeter.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
@@ -251,7 +243,6 @@ public partial class MainWindow : Window
         if (_animationViewModel is not null)
         {
             _animationViewModel.PropertyChanged += OnAnimationViewModelPropertyChanged;
-            _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(_animationViewModel.DocumentSyncIntervalMs);
         }
         UpdateStatusAnimationState(restartActiveClocks: true);
     }
@@ -276,8 +267,6 @@ public partial class MainWindow : Window
         }
         if (e.PropertyName == nameof(MainViewModel.IsViewSetting) && _animationViewModel is { IsViewSetting: false })
             StopSettingsPageFade();
-        if (e.PropertyName == nameof(MainViewModel.DocumentSyncIntervalMs) && _animationViewModel is { } syncModel)
-            _documentSyncTimer.Interval = TimeSpan.FromMilliseconds(syncModel.DocumentSyncIntervalMs);
         if (string.IsNullOrEmpty(e.PropertyName)
             || e.PropertyName == nameof(MainViewModel.IsPsRunning)
             || e.PropertyName == nameof(MainViewModel.IsRefreshingStatus))
@@ -402,7 +391,6 @@ public partial class MainWindow : Window
         _isClosing = true;
         StopSettingsPageFade();
         _settingsPageFadeTimer.Tick -= OnSettingsPageFadeTick;
-        _documentSyncTimer.Stop();
         Screens.Changed -= OnScreensChanged;
         _edgeAnimationGeneration++;
         _statusAnimationTimer.Stop();
@@ -851,6 +839,7 @@ public partial class MainWindow : Window
         CloseGenieAnimationWindow();
         _isSnapAnimating = false;
         _isEdgeFinishing = false;
+        QueueForegroundDocumentProbe();
         UpdateStatusAnimationState(restartActiveClocks: false);
         if (_isDocked && _isDockRevealed) _edgeHoverTimer.Start();
         if (hiding && _dockRevealPending)
@@ -941,7 +930,6 @@ public partial class MainWindow : Window
         SetWindowCornerRound();
         // 此时窗口已关联实际显示器，避免初始化阶段按错误屏幕写入过小 MaxWidth。
         RestoreSavedWindowSize();
-        _documentSyncTimer.Start();
         UpdateStatusAnimationState(restartActiveClocks: true);
         // 窗口已关联实际句柄，安装子类化拦截 WM_EXITSIZEMOVE
         InstallWndProcSubclass();
@@ -959,16 +947,30 @@ public partial class MainWindow : Window
             offsetY + viewportHeight < extentHeight - tolerance);
     }
 
-    private async void OnWindowActivated(object? sender, EventArgs e)
-    {
-        if (!_hasHandledInitialActivation)
-        {
-            _hasHandledInitialActivation = true;
-            return;
-        }
+    private void OnWindowActivated(object? sender, EventArgs e)
+        => QueueForegroundDocumentProbe();
 
-        if (!_isSnapAnimating && (!_isDocked || _isDockRevealed) && DataContext is MainViewModel vm)
-            await vm.RefreshOnActivationAsync();
+    private bool CanDispatchForegroundDocumentProbe()
+    {
+        if (_isClosing || _isRestoringPlacement || !_placementRestorationCompleted
+            || _isHiddenToTray || _isSnapAnimating || (_isDocked && !_isDockRevealed)
+            || !IsActive || !IsVisible || Opacity <= 0 || WindowState == WindowState.Minimized) return false;
+        if (!OperatingSystem.IsWindows()) return true;
+        var handle = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        return handle != IntPtr.Zero && GetForegroundWindow() == handle;
+    }
+
+    private void QueueForegroundDocumentProbe()
+    {
+        // One queued check per activation, after placement/animation has settled. Never poll or activate the window here.
+        Dispatcher.UIThread.Post(async () =>
+        {
+            if (_hasProbedCurrentActivation || !CanDispatchForegroundDocumentProbe()
+                || DataContext is not MainViewModel vm) return;
+            _hasProbedCurrentActivation = true;
+            // Also consumes activations during an existing probe/export, so completion cannot cause another probe.
+            await vm.RefreshOnActivationAsync(CanDispatchForegroundDocumentProbe);
+        }, DispatcherPriority.Loaded);
     }
 
     private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
@@ -1014,7 +1016,6 @@ public partial class MainWindow : Window
         CloseDockIcon();
         CloseGenieAnimationWindow();
         StopSettingsPageFade();
-        _documentSyncTimer.Stop();
         _statusAnimationTimer.Stop();
         _edgeHoverTimer.Stop();
     }
@@ -1155,7 +1156,6 @@ public partial class MainWindow : Window
         if (wasMinimized)
             WindowState = WindowState.Normal;
 
-        _documentSyncTimer.Start();
         UpdateStatusAnimationState(restartActiveClocks: false);
         PersistWindowPlacement();
         Activate();
@@ -1262,6 +1262,9 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

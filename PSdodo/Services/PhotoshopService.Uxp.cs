@@ -12,9 +12,14 @@ public sealed partial class PhotoshopService
     private readonly UxpScriptBridge? _probeUxpBridge;
     private readonly FileLogger? _probeLogger;
     private bool _useUxpProbe;
-    public bool SupportsBackgroundIdentityProbe => !_useUxpProbe;
+    public Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoWithUxpAsync(
+        Func<bool>? canDispatch = null, CancellationToken ct = default)
+    {
+        _useUxpProbe = true;
+        return ProbeWithUxpAsync(ct, canDispatch);
+    }
 
-    private async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeWithUxpAsync(CancellationToken ct)
+    private async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeWithUxpAsync(CancellationToken ct, Func<bool>? canDispatch = null)
     {
         if (_probeUxpBridge is null)
             return (PsDocumentInfo.Empty, PsBridgeResult.Failed(new IOException("未配置 UXP 文档识别通道")));
@@ -25,7 +30,7 @@ public sealed partial class PhotoshopService
         {
             ["RESULT_FOLDER_URL"] = ScriptParameterInjector.EscapeJsString(ExportService.ToUxpFolderUrl(taskDirectory))
         });
-        var dispatched = await _probeUxpBridge.ExecuteAsync(script, ct);
+        var dispatched = await _probeUxpBridge.ExecuteAsync(script, ct, canDispatch);
         _probeLogger?.Info($"UXP 文档识别启动 success={dispatched.Success}；脚本={dispatched.TempFilePath}；回执={taskDirectory}");
         if (!dispatched.Success)
             return (PsDocumentInfo.Empty, PsBridgeResult.Failed(dispatched.Error ?? new IOException("UXP 文档识别脚本未启动")));
@@ -56,7 +61,7 @@ public sealed partial class PhotoshopService
                         document.Path = Path.IsPathFullyQualified(document.Path) ? Path.GetDirectoryName(document.Path) ?? "" : "";
                         var logs = new List<PsLogEntry>
                         {
-                            new() { Level = PsLogLevel.Info, Message = "已通过 UXP 读取文档；开启自动同步时，Photoshop 前台停止输入后合并刷新，导出前再次刷新。" }
+                            new() { Level = PsLogLevel.Info, Message = "已通过 UXP 读取文档；前台识别仅在 PSexp 获得焦点时执行一次，导出前另行刷新。" }
                         };
                         foreach (var warning in root.GetProperty("warnings").EnumerateArray())
                             logs.Add(new PsLogEntry { Level = PsLogLevel.Warn, Message = warning.GetString() ?? "" });
