@@ -19,19 +19,28 @@ function Get-PSexpUpdateSigner([string]$Repository) {
     if ($keyFile.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Private signing keys must stay outside the source repository.'
     }
-    if (-not (Test-Path -LiteralPath $keyFile -PathType Leaf)) {
-        throw ("Release signing key not found or not accessible: " + $keyFile +
-            ". Use the original Windows signing account/environment. Do not generate a replacement key.")
-    }
     $trustPath = Join-Path $Repository 'PSdodo\Resources\Updates\update-public-key.json'
     $trusted = [IO.File]::ReadAllText($trustPath) | ConvertFrom-Json
     if ($trusted.algorithm -ne 'RSA-SHA256-PKCS1') { throw 'Unsupported release signing algorithm.' }
     Add-Type -AssemblyName System.Security
     $plain = $null
+    $protectedBytes = $null
     $rsa = $null
     try {
+        # The actual read is authoritative. Test-Path may hide the underlying provider/access error.
+        try {
+            $protectedBytes = [IO.File]::ReadAllBytes($keyFile)
+        } catch {
+            $cause = $_.Exception.GetBaseException()
+            $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+            throw ('Cannot read the original protected signing key. File: ' + $keyFile +
+                '. Windows error: ' + $cause.GetType().FullName + ' / 0x' + $cause.HResult.ToString('X8') +
+                ' / ' + $cause.Message + '. User SID: ' + $identity.User.Value +
+                '. Keep the original key; do not generate a replacement.')
+        }
+        Write-Host '[signing] Protected key read: OK'
         $plain = [Security.Cryptography.ProtectedData]::Unprotect(
-            [IO.File]::ReadAllBytes($keyFile), $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+            $protectedBytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
         $rsa = [Security.Cryptography.RSACryptoServiceProvider]::new(3072)
         $rsa.PersistKeyInCsp = $false
         $rsa.FromXmlString([Text.Encoding]::UTF8.GetString($plain))
@@ -49,6 +58,7 @@ function Get-PSexpUpdateSigner([string]$Repository) {
         throw
     } finally {
         if ($null -ne $plain) { [Array]::Clear($plain, 0, $plain.Length) }
+        if ($null -ne $protectedBytes) { [Array]::Clear($protectedBytes, 0, $protectedBytes.Length) }
     }
 }
 
@@ -58,6 +68,7 @@ function Assert-PSexpSigningReady([string]$Repository) {
     $source = 'Windows current-user LocalApplicationData'
     if (-not [string]::IsNullOrWhiteSpace($env:PSexpSigningKeyFile)) { $source = 'PSexpSigningKeyFile override' }
     Write-Host ('[signing] Windows account: ' + $identity)
+    Write-Host ('[signing] Windows user SID: ' + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
     Write-Host ('[signing] Key location source: ' + $source)
     Write-Host ('[signing] Protected key file: ' + $keyFile)
     # Paths and account names only. Never print private key bytes or DPAPI plaintext.
