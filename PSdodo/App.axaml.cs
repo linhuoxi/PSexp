@@ -42,6 +42,7 @@ public partial class App : Application
             {
                 DataContext = provider.GetRequiredService<MainViewModel>(),
             };
+            mainWindow.PrepareSavedPlacement();
             desktop.MainWindow = mainWindow;
             InitializeTray(desktop, mainWindow, provider.GetRequiredService<MainViewModel>(), provider.GetRequiredService<FileLogger>());
             SingleInstance?.StartListening(() =>
@@ -81,6 +82,10 @@ public partial class App : Application
         var colors = isDark
             ? new Dictionary<string, string>
             {
+                ["Brush.SettingsCard"] = "#1B1F2A",
+                ["Brush.SettingsBorder"] = "#323A4A",
+                ["Brush.SettingsTrack"] = "#121620",
+                ["Brush.SettingsSelected"] = "#303A4B",
                 ["Brush.Canvas"] = "#11131A",
                 ["Brush.Surface"] = "#191C26",
                 ["Brush.SurfaceSubtle"] = "#222632",
@@ -98,6 +103,10 @@ public partial class App : Application
             }
             : new Dictionary<string, string>
             {
+                ["Brush.SettingsCard"] = "#FFFFFF",
+                ["Brush.SettingsBorder"] = "#E1E5EF",
+                ["Brush.SettingsTrack"] = "#EEF1F6",
+                ["Brush.SettingsSelected"] = "#FFFFFF",
                 ["Brush.Canvas"] = "#F4F5FA",
                 ["Brush.Surface"] = "#FFFFFF",
                 ["Brush.SurfaceSubtle"] = "#F8F9FD",

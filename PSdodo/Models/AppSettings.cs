@@ -57,6 +57,8 @@ public sealed class AppSettings
     public int DocumentSyncIntervalMs { get; set; } = 1200;
     public int DockRetractDelayMs { get; set; } = 420;
 
+    public WindowPlacementState? WindowPlacement { get; set; }
+
     /// <summary>上次正常窗口宽度</summary>
     public double WindowWidth { get; set; } = DefaultWindowWidth;
 

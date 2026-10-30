@@ -454,11 +454,17 @@
         <Setter Property="Spacing" Value="{StaticResource Space.Md}"/>
     </Style>
     <Style Selector="controls|ContinuousBorder.settings-section">
-        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
+        <Setter Property="Background" Value="{DynamicResource Brush.SettingsCard}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.SettingsBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
-        <Setter Property="Padding" Value="12"/>
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.SettingsCard}"/>
+        <Setter Property="Padding" Value="14"/>
+    </Style>
+    <Style Selector="controls|ContinuousBorder.settings-section controls|AnimatedSegmentTrack.choice-track, controls|AnimatedSegmentTrack.settings-tabs">
+        <Setter Property="Background" Value="{DynamicResource Brush.SettingsTrack}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.SettingsBorder}"/>
+        <Setter Property="IndicatorBrush" Value="{DynamicResource Brush.SettingsSelected}"/>
+        <Setter Property="IndicatorBorderBrush" Value="{DynamicResource Brush.SettingsBorder}"/>
     </Style>
     <Style Selector="Grid.settings-row">
         <Setter Property="MinHeight" Value="40"/>
@@ -482,9 +488,13 @@
         <Setter Property="Background" Value="{StaticResource Brush.Divider}"/>
     </Style>
     <Style Selector="controls|ContinuousBorder.settings-summary">
-        <Setter Property="Background" Value="{StaticResource Brush.SurfaceSubtle}"/>
+        <Setter Property="Background" Value="{DynamicResource Brush.SettingsTrack}"/>
         <Setter Property="CornerRadius" Value="{StaticResource Radius.Sm}"/>
         <Setter Property="Padding" Value="12"/>
+    </Style>
+    <Style Selector="Button.settings-directory-action">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.settings-update-action">
         <Setter Property="MinWidth" Value="0"/>

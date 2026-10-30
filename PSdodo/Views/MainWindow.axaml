@@ -667,405 +667,412 @@
                             </controls:ContinuousBorder>
                         </StackPanel>
                     </ScrollViewer>
-                    <controls:ContinuousBorder IsVisible="{Binding IsViewSetting}"
-                        Margin="16,6,16,12"
-                            Background="{StaticResource Brush.Surface}"
-                            BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
-                            CornerRadius="{StaticResource Radius.Md}" Padding="{StaticResource Padding.Panel}">
-                        <!-- Settings: compact category navigation, one section at a time. -->
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12" IsVisible="{Binding IsViewSetting}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="设置" Classes="title" VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" Classes="secondary" Command="{Binding HideSettingsCommand}" Content="返回导出"/>
-                            </Grid>
-                            <Panel Grid.Row="1">
-                                <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding SelectedSettingsSection}">
-                                    <Grid ColumnDefinitions="*,*,*,*">
-                                        <Button Grid.Column="0" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="0">
-                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                <TextBlock Text="常规" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=0}"/>
-                                            </controls:ContinuousBorder>
-                                        </Button>
-                                        <Button Grid.Column="1" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="1">
-                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                <TextBlock Text="导出" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=1}"/>
-                                            </controls:ContinuousBorder>
-                                        </Button>
-                                        <Button Grid.Column="2" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="2">
-                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                <TextBlock Text="联动" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=2}"/>
-                                            </controls:ContinuousBorder>
-                                        </Button>
-                                        <Button Grid.Column="3" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="3">
-                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                <TextBlock Text="更新" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=3}"/>
-                                            </controls:ContinuousBorder>
-                                        </Button>
-                                    </Grid>
-                                </controls:AnimatedSegmentTrack>
-                            </Panel>
-                            <ScrollViewer x:Name="SettingsScrollViewer" Grid.Row="2" Classes="subtle-scroll" AllowAutoHide="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                <Grid x:Name="SettingsPageHost" Margin="0,4,8,8">
-                                    <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsGeneral}">
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <TextBlock Text="界面" Classes="settings-group-title"/>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="主题" Classes="setting-label" VerticalAlignment="Center"/>
-                                                    <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding ThemeMode}">
-                                                        <Grid ColumnDefinitions="*,*,*">
-                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static models:AppThemeMode.System}">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="自动" ToolTip.Tip="跟随系统主题" Classes="mode-label" Foreground="{Binding ThemeMode, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter={x:Static models:AppThemeMode.System}}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static models:AppThemeMode.Light}">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="浅色" Classes="mode-label" Foreground="{Binding ThemeMode, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter={x:Static models:AppThemeMode.Light}}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                            <Button Grid.Column="2" Classes="seg" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static models:AppThemeMode.Dark}">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="深色" Classes="mode-label" Foreground="{Binding ThemeMode, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter={x:Static models:AppThemeMode.Dark}}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                        </Grid>
-                                                    </controls:AnimatedSegmentTrack>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="空白处拖窗" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="按钮、输入框、滚动条和质量条保持各自操作。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding EnableBlankDrag}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetEnableBlankDragCommand}" CommandParameter="True" AutomationProperties.Name="空白处拖窗：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding EnableBlankDrag, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetEnableBlankDragCommand}" CommandParameter="False" AutomationProperties.Name="空白处拖窗：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding EnableBlankDrag, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="质量条悬停动效" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="控制悬停放大；点击和数值变化的反馈保留。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding EnableQualityHoverAnimation}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetEnableQualityHoverAnimationCommand}" CommandParameter="True" AutomationProperties.Name="质量条悬停动效：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding EnableQualityHoverAnimation, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetEnableQualityHoverAnimationCommand}" CommandParameter="False" AutomationProperties.Name="质量条悬停动效：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding EnableQualityHoverAnimation, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <TextBlock Text="窗口" Classes="settings-group-title"/>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="关闭后常驻" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="关闭按钮收起到托盘；在托盘右键菜单中选择退出。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding CloseToTray}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Classes="seg" Command="{Binding SetCloseToTrayCommand}" CommandParameter="True" AutomationProperties.Name="关闭后常驻：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding CloseToTray, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetCloseToTrayCommand}" CommandParameter="False" AutomationProperties.Name="关闭后常驻：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding CloseToTray, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="窗口置顶" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="主窗口保持置顶；收纳入口独立保持可见。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding IsAlwaysOnTop}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetAlwaysOnTopCommand}" CommandParameter="True" AutomationProperties.Name="窗口置顶：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding IsAlwaysOnTop, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetAlwaysOnTopCommand}" CommandParameter="False" AutomationProperties.Name="窗口置顶：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding IsAlwaysOnTop, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="贴边收纳" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="拖到屏幕边缘后收纳，悬停或点击入口展开。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding EnableEdgeSnap}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetEnableEdgeSnapCommand}" CommandParameter="True" AutomationProperties.Name="贴边收纳：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding EnableEdgeSnap, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetEnableEdgeSnapCommand}" CommandParameter="False" AutomationProperties.Name="贴边收纳：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding EnableEdgeSnap, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="收回等待" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="鼠标移出后等待 250 / 420 / 800 毫秒再收回。"/>
-                                                    <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding DockRetractDelayMs}" IsEnabled="{Binding EnableEdgeSnap}">
-                                                        <Grid ColumnDefinitions="*,*,*">
-                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetDockRetractDelayCommand}" CommandParameter="250">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="快速" Classes="mode-label" Foreground="{Binding DockRetractDelayMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=250}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetDockRetractDelayCommand}" CommandParameter="420">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="标准" Classes="mode-label" Foreground="{Binding DockRetractDelayMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=420}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                            <Button Grid.Column="2" Classes="seg" Command="{Binding SetDockRetractDelayCommand}" CommandParameter="800">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="从容" Classes="mode-label" Foreground="{Binding DockRetractDelayMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=800}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                        </Grid>
-                                                    </controls:AnimatedSegmentTrack>
-                                                </Grid>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                    </StackPanel>
-                                    <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsExport}">
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <TextBlock Text="文件命名" Classes="settings-group-title"/>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="同名自动改名" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="开启时追加序号，关闭时覆盖同名文件。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoRename}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoRenameCommand}" CommandParameter="True" AutomationProperties.Name="同名自动改名：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoRename, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoRenameCommand}" CommandParameter="False" AutomationProperties.Name="同名自动改名：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoRename, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="文档名前缀" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="未填写图层前缀时使用文档名称。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding LayerExportWithDocName}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetLayerExportWithDocNameCommand}" CommandParameter="True" AutomationProperties.Name="文档名前缀：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding LayerExportWithDocName, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetLayerExportWithDocNameCommand}" CommandParameter="False" AutomationProperties.Name="文档名前缀：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding LayerExportWithDocName, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="文档名优先" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="图层导出时，以文档名替代手动前缀。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoUseDocNameAsPrefix}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoUseDocNameAsPrefixCommand}" CommandParameter="True" AutomationProperties.Name="文档名优先：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoUseDocNameAsPrefix, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoUseDocNameAsPrefixCommand}" CommandParameter="False" AutomationProperties.Name="文档名优先：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoUseDocNameAsPrefix, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <TextBlock Text="默认导出参数" Classes="settings-group-title"/>
-                                                <controls:ContinuousBorder Classes="settings-summary">
-                                                    <TextBlock Text="{Binding DefaultExportSummary}" Classes="setting-description" TextWrapping="Wrap"/>
-                                                </controls:ContinuousBorder>
-                                                <Button Classes="secondary" Command="{Binding SaveAsDefaultCommand}" Content="将当前参数设为默认" HorizontalAlignment="Stretch"/>
-                                                <TextBlock Text="只在点击后保存当前导出参数。" Classes="settings-caption"/>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                    </StackPanel>
-                                    <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsLink}">
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <TextBlock Text="Photoshop" Classes="settings-group-title"/>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="自动同步文档" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="Photoshop 在前台时检查文档切换，导出期间暂停。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoRefreshOnActivated}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="True" AutomationProperties.Name="自动同步文档：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoRefreshOnActivated, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="False" AutomationProperties.Name="自动同步文档：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoRefreshOnActivated, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="检查间隔" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="更短的间隔响应更快；更长的间隔减少后台检查。"/>
-                                                    <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding DocumentSyncIntervalMs}" IsEnabled="{Binding AutoRefreshOnActivated}">
-                                                        <Grid ColumnDefinitions="*,*,*">
-                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="800">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="0.8s" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=800}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="1200">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="1.2s" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=1200}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                            <Button Grid.Column="2" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="2000">
-                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                    <TextBlock Text="2s" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=2000}"/>
-                                                                </controls:ContinuousBorder>
-                                                            </Button>
-                                                        </Grid>
-                                                    </controls:AnimatedSegmentTrack>
-                                                </Grid>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <TextBlock Text="数据与日志" Classes="settings-group-title"/>
-                                                <TextBlock Text="设置保存在用户目录，日志位于软件旁。" Classes="settings-caption"/>
-                                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                                    <Button Grid.Column="0" Classes="secondary" Command="{Binding OpenDataDirectoryCommand}" Content="设置目录" ToolTip.Tip="{Binding DataDirectory}"/>
-                                                    <Button Grid.Column="1" Classes="secondary" Command="{Binding OpenLogDirectoryCommand}" Content="日志目录" ToolTip.Tip="{Binding LogFilePath}"/>
-                                                </Grid>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                    </StackPanel>
-                                    <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsUpdate}">
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <TextBlock Text="自动更新" Classes="settings-group-title"/>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="自动检测" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="启动后及每 6 小时检查一次。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoCheckForUpdates}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoCheckForUpdatesCommand}" CommandParameter="True" AutomationProperties.Name="自动检测：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoCheckForUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoCheckForUpdatesCommand}" CommandParameter="False" AutomationProperties.Name="自动检测：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoCheckForUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                                <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                    <TextBlock Text="后台下载" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="下载并校验后，由你确认重启安装。"/>
-                                                    <Panel Grid.Column="1">
-                                                        <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoDownloadUpdates}">
-                                                            <Grid ColumnDefinitions="*,*">
-                                                                <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoDownloadUpdatesCommand}" CommandParameter="True" AutomationProperties.Name="后台下载：开启">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoDownloadUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                                <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoDownloadUpdatesCommand}" CommandParameter="False" AutomationProperties.Name="后台下载：关闭">
-                                                                    <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
-                                                                        <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoDownloadUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
-                                                                    </controls:ContinuousBorder>
-                                                                </Button>
-                                                            </Grid>
-                                                        </controls:AnimatedSegmentTrack>
-                                                    </Panel>
-                                                </Grid>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                        <controls:ContinuousBorder Classes="settings-section">
-                                            <StackPanel Spacing="12">
-                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                                    <TextBlock Text="版本信息" Classes="settings-group-title" VerticalAlignment="Center"/>
-                                                    <controls:ContinuousBorder Grid.Column="1" Background="{StaticResource Brush.Surface}" CornerRadius="{StaticResource Radius.SegmentInner}" Padding="8,4">
-                                                        <TextBlock Text="{Binding UpdateVersionLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Brush.TextPrimary}"/>
-                                                    </controls:ContinuousBorder>
-                                                </Grid>
-                                                <TextBlock Text="{Binding UpdateStatus}" Classes="setting-description" TextWrapping="Wrap"/>
-                                                <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateProgress}" IsVisible="{Binding IsUpdateBusy}" Height="4"/>
-                                                <StackPanel Spacing="8" IsVisible="{Binding HasUpdateChangelog}">
-                                                    <controls:ContinuousBorder Classes="settings-separator"/>
-                                                    <TextBlock Text="更新内容" Classes="setting-label"/>
-                                                    <ScrollViewer MaxHeight="140" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                                                        <TextBlock Text="{Binding UpdateChangelog}" Classes="setting-description" TextWrapping="Wrap"/>
-                                                    </ScrollViewer>
-                                                </StackPanel>
-                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                                    <Button Classes="secondary" Content="检查更新" Command="{Binding CheckForUpdatesCommand}"/>
-                                                    <Button Grid.Column="1" Classes="primary settings-update-action" Content="{Binding UpdateActionText}" Command="{Binding ApplyUpdateCommand}" IsVisible="{Binding IsUpdateAvailable}"/>
-                                                </Grid>
-                                                <TextBlock Text="确认重启后安装；导出期间暂不安装。" Classes="settings-caption" IsVisible="{Binding IsUpdateAvailable}" ToolTip.Tip="更新会校验文件并保留旧版备份。"/>
-                                            </StackPanel>
-                                        </controls:ContinuousBorder>
-                                    </StackPanel>
-                                </Grid>
-                            </ScrollViewer>
-                            <StackPanel Grid.Row="3" Spacing="8">
-                                <controls:ContinuousBorder Classes="settings-separator"/>
-                                <TextBlock Text="{Binding SettingsStatusText}" Classes="settings-caption" TextWrapping="Wrap"/>
-                            </StackPanel>
+                    <!-- Settings sit directly on the window canvas; each group owns its card. -->
+                    <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12"
+                          Margin="16,6,16,12" IsVisible="{Binding IsViewSetting}">
+                        <Grid ColumnDefinitions="*,Auto" Width="{Binding #SettingsPageHost.Bounds.Width}" HorizontalAlignment="Left">
+                            <TextBlock Text="设置" Classes="title" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Classes="secondary" Command="{Binding HideSettingsCommand}" Content="返回导出"/>
                         </Grid>
-                    </controls:ContinuousBorder>
+                        <Panel Grid.Row="1" Width="{Binding #SettingsPageHost.Bounds.Width}" HorizontalAlignment="Left">
+                            <controls:AnimatedSegmentTrack Classes="choice-track settings-tabs" SelectionValue="{Binding SelectedSettingsSection}">
+                                <Grid ColumnDefinitions="*,*,*,*">
+                                    <Button Grid.Column="0" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="0">
+                                        <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                            <TextBlock Text="常规" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=0}"/>
+                                        </controls:ContinuousBorder>
+                                    </Button>
+                                    <Button Grid.Column="1" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="1">
+                                        <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                            <TextBlock Text="导出" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=1}"/>
+                                        </controls:ContinuousBorder>
+                                    </Button>
+                                    <Button Grid.Column="2" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="2">
+                                        <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                            <TextBlock Text="联动" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=2}"/>
+                                        </controls:ContinuousBorder>
+                                    </Button>
+                                    <Button Grid.Column="3" Classes="seg" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="3">
+                                        <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                            <TextBlock Text="更新" Classes="mode-label" Foreground="{Binding SelectedSettingsSection, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=3}"/>
+                                        </controls:ContinuousBorder>
+                                    </Button>
+                                </Grid>
+                            </controls:AnimatedSegmentTrack>
+                        </Panel>
+                        <ScrollViewer x:Name="SettingsScrollViewer" Grid.Row="2" Classes="subtle-scroll" AllowAutoHide="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <Grid x:Name="SettingsPageHost" Margin="0,4,8,8">
+                                <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsGeneral}">
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="界面" Classes="settings-group-title"/>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,168" ColumnSpacing="12">
+                                                <TextBlock Text="主题" Classes="setting-label" VerticalAlignment="Center"/>
+                                                <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding ThemeMode}">
+                                                    <Grid ColumnDefinitions="*,*,*">
+                                                        <Button Grid.Column="0" Classes="seg" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static models:AppThemeMode.System}">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="跟随系统" ToolTip.Tip="跟随系统主题" Classes="mode-label" Foreground="{Binding ThemeMode, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter={x:Static models:AppThemeMode.System}}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                        <Button Grid.Column="1" Classes="seg" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static models:AppThemeMode.Light}">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="浅色" Classes="mode-label" Foreground="{Binding ThemeMode, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter={x:Static models:AppThemeMode.Light}}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                        <Button Grid.Column="2" Classes="seg" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static models:AppThemeMode.Dark}">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="深色" Classes="mode-label" Foreground="{Binding ThemeMode, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter={x:Static models:AppThemeMode.Dark}}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                    </Grid>
+                                                </controls:AnimatedSegmentTrack>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="空白处拖窗" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="按钮、输入框、滚动条和质量条保持各自操作。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding EnableBlankDrag}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetEnableBlankDragCommand}" CommandParameter="False" AutomationProperties.Name="空白处拖窗：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding EnableBlankDrag, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetEnableBlankDragCommand}" CommandParameter="True" AutomationProperties.Name="空白处拖窗：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding EnableBlankDrag, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="质量条悬停动效" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="控制悬停放大；点击和数值变化的反馈保留。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding EnableQualityHoverAnimation}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetEnableQualityHoverAnimationCommand}" CommandParameter="False" AutomationProperties.Name="质量条悬停动效：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding EnableQualityHoverAnimation, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetEnableQualityHoverAnimationCommand}" CommandParameter="True" AutomationProperties.Name="质量条悬停动效：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding EnableQualityHoverAnimation, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="窗口" Classes="settings-group-title"/>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="关闭后常驻" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="关闭按钮收起到托盘；在托盘右键菜单中选择退出。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding CloseToTray}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetCloseToTrayCommand}" CommandParameter="False" AutomationProperties.Name="关闭后常驻：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding CloseToTray, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetCloseToTrayCommand}" CommandParameter="True" AutomationProperties.Name="关闭后常驻：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding CloseToTray, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="窗口置顶" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="主窗口保持置顶；收纳入口独立保持可见。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding IsAlwaysOnTop}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAlwaysOnTopCommand}" CommandParameter="False" AutomationProperties.Name="窗口置顶：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding IsAlwaysOnTop, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAlwaysOnTopCommand}" CommandParameter="True" AutomationProperties.Name="窗口置顶：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding IsAlwaysOnTop, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="贴边收纳" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="拖到屏幕边缘后收纳，悬停或点击入口展开。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding EnableEdgeSnap}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetEnableEdgeSnapCommand}" CommandParameter="False" AutomationProperties.Name="贴边收纳：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding EnableEdgeSnap, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetEnableEdgeSnapCommand}" CommandParameter="True" AutomationProperties.Name="贴边收纳：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding EnableEdgeSnap, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,168" ColumnSpacing="12">
+                                                <TextBlock Text="收回等待" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="鼠标移出后等待 250 / 420 / 800 毫秒再收回。"/>
+                                                <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding DockRetractDelayMs}" IsEnabled="{Binding EnableEdgeSnap}">
+                                                    <Grid ColumnDefinitions="*,*,*">
+                                                        <Button Grid.Column="0" Classes="seg" Command="{Binding SetDockRetractDelayCommand}" CommandParameter="250">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="快速" Classes="mode-label" Foreground="{Binding DockRetractDelayMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=250}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                        <Button Grid.Column="1" Classes="seg" Command="{Binding SetDockRetractDelayCommand}" CommandParameter="420">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="标准" Classes="mode-label" Foreground="{Binding DockRetractDelayMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=420}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                        <Button Grid.Column="2" Classes="seg" Command="{Binding SetDockRetractDelayCommand}" CommandParameter="800">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="从容" Classes="mode-label" Foreground="{Binding DockRetractDelayMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=800}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                    </Grid>
+                                                </controls:AnimatedSegmentTrack>
+                                            </Grid>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                </StackPanel>
+                                <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsExport}">
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="文件命名" Classes="settings-group-title"/>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="同名自动改名" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="开启时追加序号，关闭时覆盖同名文件。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoRename}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoRenameCommand}" CommandParameter="False" AutomationProperties.Name="同名自动改名：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoRename, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoRenameCommand}" CommandParameter="True" AutomationProperties.Name="同名自动改名：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoRename, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="文档名前缀" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="未填写图层前缀时使用文档名称。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding LayerExportWithDocName}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetLayerExportWithDocNameCommand}" CommandParameter="False" AutomationProperties.Name="文档名前缀：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding LayerExportWithDocName, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetLayerExportWithDocNameCommand}" CommandParameter="True" AutomationProperties.Name="文档名前缀：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding LayerExportWithDocName, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="文档名优先" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="图层导出时，以文档名替代手动前缀。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoUseDocNameAsPrefix}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoUseDocNameAsPrefixCommand}" CommandParameter="False" AutomationProperties.Name="文档名优先：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoUseDocNameAsPrefix, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoUseDocNameAsPrefixCommand}" CommandParameter="True" AutomationProperties.Name="文档名优先：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoUseDocNameAsPrefix, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="默认导出参数" Classes="settings-group-title"/>
+                                            <controls:ContinuousBorder Classes="settings-summary">
+                                                <TextBlock Text="{Binding DefaultExportSummary}" Classes="setting-description" TextWrapping="Wrap"/>
+                                            </controls:ContinuousBorder>
+                                            <Button Classes="secondary" Command="{Binding SaveAsDefaultCommand}" Content="将当前参数设为默认" HorizontalAlignment="Stretch"/>
+                                            <TextBlock Text="只在点击后保存当前导出参数。" Classes="settings-caption"/>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                </StackPanel>
+                                <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsLink}">
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="Photoshop" Classes="settings-group-title"/>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="自动同步文档" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="Photoshop 在前台时检查文档切换，导出期间暂停。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoRefreshOnActivated}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="False" AutomationProperties.Name="自动同步文档：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoRefreshOnActivated, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoRefreshOnActivatedCommand}" CommandParameter="True" AutomationProperties.Name="自动同步文档：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoRefreshOnActivated, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,168" ColumnSpacing="12">
+                                                <TextBlock Text="检查间隔" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="更短的间隔响应更快；更长的间隔减少后台检查。"/>
+                                                <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding DocumentSyncIntervalMs}" IsEnabled="{Binding AutoRefreshOnActivated}">
+                                                    <Grid ColumnDefinitions="*,*,*">
+                                                        <Button Grid.Column="0" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="800">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="0.8 秒" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=800}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                        <Button Grid.Column="1" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="1200">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="1.2 秒" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=1200}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                        <Button Grid.Column="2" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="2000">
+                                                            <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                <TextBlock Text="2 秒" Classes="mode-label" Foreground="{Binding DocumentSyncIntervalMs, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=2000}"/>
+                                                            </controls:ContinuousBorder>
+                                                        </Button>
+                                                    </Grid>
+                                                </controls:AnimatedSegmentTrack>
+                                            </Grid>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="数据与日志" Classes="settings-group-title"/>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <StackPanel Spacing="4" VerticalAlignment="Center" ToolTip.Tip="{Binding DataDirectory}">
+                                                    <TextBlock Text="设置目录" Classes="setting-label"/>
+                                                    <TextBlock Text="偏好与默认参数" Classes="settings-caption"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Classes="secondary settings-directory-action" Command="{Binding OpenDataDirectoryCommand}"
+                                                    Content="打开文件夹" ToolTip.Tip="{Binding DataDirectory}" AutomationProperties.Name="打开设置目录"/>
+                                            </Grid>
+                                            <controls:ContinuousBorder Classes="settings-separator"/>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <StackPanel Spacing="4" VerticalAlignment="Center" ToolTip.Tip="{Binding LogFilePath}">
+                                                    <TextBlock Text="日志目录" Classes="setting-label"/>
+                                                    <TextBlock Text="运行及导出记录" Classes="settings-caption"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Classes="secondary settings-directory-action" Command="{Binding OpenLogDirectoryCommand}"
+                                                    Content="打开文件夹" ToolTip.Tip="{Binding LogFilePath}" AutomationProperties.Name="打开日志目录"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                </StackPanel>
+                                <StackPanel Classes="settings-page" IsVisible="{Binding IsSettingsUpdate}">
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="自动更新" Classes="settings-group-title"/>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="自动检测" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="启动后及每 6 小时检查一次。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoCheckForUpdates}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoCheckForUpdatesCommand}" CommandParameter="False" AutomationProperties.Name="自动检测：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoCheckForUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoCheckForUpdatesCommand}" CommandParameter="True" AutomationProperties.Name="自动检测：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoCheckForUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                            <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
+                                                <TextBlock Text="后台下载" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="下载并校验后，由你确认重启安装。"/>
+                                                <Panel Grid.Column="1">
+                                                    <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoDownloadUpdates}">
+                                                        <Grid ColumnDefinitions="*,*">
+                                                            <Button Grid.Column="0" Classes="seg" Command="{Binding SetAutoDownloadUpdatesCommand}" CommandParameter="False" AutomationProperties.Name="后台下载：关闭">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="关闭" Classes="mode-label" Foreground="{Binding AutoDownloadUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=False}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                            <Button Grid.Column="1" Classes="seg" Command="{Binding SetAutoDownloadUpdatesCommand}" CommandParameter="True" AutomationProperties.Name="后台下载：开启">
+                                                                <controls:ContinuousBorder Background="Transparent" CornerRadius="{StaticResource Radius.SegmentInner}">
+                                                                    <TextBlock Text="开启" Classes="mode-label" Foreground="{Binding AutoDownloadUpdates, Converter={x:Static vm:EqualsToTextBrushConverter.Instance}, ConverterParameter=True}"/>
+                                                                </controls:ContinuousBorder>
+                                                            </Button>
+                                                        </Grid>
+                                                    </controls:AnimatedSegmentTrack>
+                                                </Panel>
+                                            </Grid>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                    <controls:ContinuousBorder Classes="settings-section">
+                                        <StackPanel Spacing="12">
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                                <TextBlock Text="版本信息" Classes="settings-group-title" VerticalAlignment="Center"/>
+                                                <controls:ContinuousBorder Grid.Column="1" Background="{DynamicResource Brush.SettingsTrack}" CornerRadius="{StaticResource Radius.SegmentInner}" Padding="8,4">
+                                                    <TextBlock Text="{Binding UpdateVersionLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Brush.TextPrimary}"/>
+                                                </controls:ContinuousBorder>
+                                            </Grid>
+                                            <TextBlock Text="{Binding UpdateStatus}" Classes="setting-description" TextWrapping="Wrap"/>
+                                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateProgress}" IsVisible="{Binding IsUpdateBusy}" Height="4"/>
+                                            <StackPanel Spacing="8" IsVisible="{Binding HasUpdateChangelog}">
+                                                <controls:ContinuousBorder Classes="settings-separator"/>
+                                                <TextBlock Text="更新内容" Classes="setting-label"/>
+                                                <ScrollViewer MaxHeight="140" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                                    <TextBlock Text="{Binding UpdateChangelog}" Classes="setting-description" TextWrapping="Wrap"/>
+                                                </ScrollViewer>
+                                            </StackPanel>
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                <Button Classes="secondary" Content="检查更新" Command="{Binding CheckForUpdatesCommand}"/>
+                                                <Button Grid.Column="1" Classes="primary settings-update-action" Content="{Binding UpdateActionText}" Command="{Binding ApplyUpdateCommand}" IsVisible="{Binding IsUpdateAvailable}"/>
+                                            </Grid>
+                                            <TextBlock Text="确认重启后安装；导出期间暂不安装。" Classes="settings-caption" IsVisible="{Binding IsUpdateAvailable}" ToolTip.Tip="更新会校验文件并保留旧版备份。"/>
+                                        </StackPanel>
+                                    </controls:ContinuousBorder>
+                                </StackPanel>
+                            </Grid>
+                        </ScrollViewer>
+                        <StackPanel Grid.Row="3" Spacing="8" Width="{Binding #SettingsPageHost.Bounds.Width}" HorizontalAlignment="Left">
+                            <controls:ContinuousBorder Classes="settings-separator"/>
+                            <TextBlock Text="{Binding SettingsStatusText}" Classes="settings-caption" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <!-- Footer actions only -->

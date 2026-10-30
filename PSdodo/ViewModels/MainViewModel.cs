@@ -62,6 +62,7 @@ public partial class MainViewModel : ViewModelBase
         AutoRefreshOnActivated = s.AutoRefreshOnActivated;
         EnableEdgeSnap = s.EnableEdgeSnap;
         ThemeMode = s.ThemeMode;
+        _windowPlacement = s.WindowPlacement;
         _windowWidth = s.WindowWidth;
         _windowHeight = s.WindowHeight;
         App.ApplyTheme(ThemeMode);
@@ -662,6 +663,7 @@ public partial class MainViewModel : ViewModelBase
             EnableQualityHoverAnimation = EnableQualityHoverAnimation,
             DocumentSyncIntervalMs = DocumentSyncIntervalMs,
             DockRetractDelayMs = DockRetractDelayMs,
+            WindowPlacement = _windowPlacement,
             WindowWidth = _windowWidth,
             WindowHeight = _windowHeight
         };

@@ -119,12 +119,12 @@ public partial class MainWindow : Window
         else if (msg == WM_NCLBUTTONUP && _isNativeTitleBarDrag)
         {
             _isNativeTitleBarDrag = false;
-            Dispatcher.UIThread.Post(() => EvaluateAndStartEdgeSnap());
+            Dispatcher.UIThread.Post(OnWindowMoveFinished);
         }
         else if (msg == WM_EXITSIZEMOVE)
         {
             _isNativeTitleBarDrag = false;
-            Dispatcher.UIThread.Post(() => EvaluateAndStartEdgeSnap());
+            Dispatcher.UIThread.Post(OnWindowMoveFinished);
         }
 
         return CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
@@ -465,9 +465,9 @@ public partial class MainWindow : Window
            && currentBounds == nextBounds
            && NearlyEqual(currentScaling, nextScaling);
 
-    private bool ApplyScreenConstraints(double requestedWidth, double requestedHeight, bool skipIfSameScreen = false)
+    private bool ApplyScreenConstraints(double requestedWidth, double requestedHeight, bool skipIfSameScreen = false, Screen? targetScreen = null)
     {
-        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        var screen = targetScreen ?? Screens.ScreenFromWindow(this) ?? Screens.Primary;
         if (screen is null)
         {
             var normalized = SettingsService.NormalizeWindowSize(requestedWidth, requestedHeight);
@@ -519,13 +519,15 @@ public partial class MainWindow : Window
 
     private void OnWindowPositionChanged(object? sender, PixelPointEventArgs e)
     {
-        if (_isSnapAnimating || _isDocked) return;
+        if (_isRestoringPlacement || _isHiddenToTray || _isSnapAnimating || _isDocked) return;
         if (!_hasRestoredWindowSize || WindowState != WindowState.Normal) return;
 
         if (ApplyScreenConstraints(Bounds.Width, Bounds.Height, skipIfSameScreen: true))
             InvalidateVisual();
 
-        // 吸附评估由 WM_EXITSIZEMOVE 触发，PositionChanged 中不做防抖
+        _windowSizeSaveTimer.Stop();
+        _windowSizeSaveTimer.Start();
+        // 吸附评估由 WM_EXITSIZEMOVE 触发；此计时器仅保存位置。
     }
 
     /// <summary>
@@ -533,7 +535,7 @@ public partial class MainWindow : Window
     /// </summary>
     public bool EvaluateAndStartEdgeSnap(int thresholdDip = 48, int durationMs = 280)
     {
-        if (_isClosing || _isSnapAnimating || _isDocked || WindowState != WindowState.Normal) return false;
+        if (_isClosing || _isRestoringPlacement || !_placementRestorationCompleted || _isSnapAnimating || _isDocked || WindowState != WindowState.Normal) return false;
         if (DataContext is not MainViewModel vm || !vm.EnableEdgeSnap) return false;
 
         var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
@@ -569,10 +571,10 @@ public partial class MainWindow : Window
             iconSizePx: (int)Math.Round(56 * scaling),
             // 仅露出一半图标；收纳态不保留完整窗口或额外窄条。
             edgeInsetPx: (int)Math.Round(28 * scaling));
-        WindowTaskSwitcher.Configure(this, excluded: true);
         _isDocked = true;
         _isDockRevealed = false;
         vm.IsEdgeDocked = true;
+        PersistWindowPlacement();
         StartEdgeAnimation(_dockHiddenPos, durationMs);
         return true;
     }
@@ -685,6 +687,7 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel vm)
             vm.IsEdgeDocked = false;
         UpdateStatusAnimationState(restartActiveClocks: false);
+        PersistWindowPlacement();
     }
 
     public static double CalculateCaptureScale(double width, double height, double screenScale)
@@ -722,7 +725,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                _genieCapturedBitmap = _dockRevealBitmap;
+                _genieCapturedBitmap = _dockRevealBitmap ?? CaptureWindowBitmap();
                 _dockRevealBitmap = null;
             }
             if (_genieCapturedBitmap is null)
@@ -863,16 +866,23 @@ public partial class MainWindow : Window
 
     private void OnScreensChanged(object? sender, EventArgs e)
     {
-        if (!_isDocked || _isClosing) return;
-        BeginUndockForDrag();
-        WindowState = WindowState.Normal;
-        var screen = Screens.ScreenFromPoint(Position) ?? Screens.Primary;
+        if (_isClosing || _isRestoringPlacement || _isHiddenToTray || !_placementRestorationCompleted) return;
+        if (_isDocked)
+        {
+            RestoreDockAfterScreenChange();
+            return;
+        }
+        if (WindowState != WindowState.Normal) return;
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
         if (screen is null) return;
-        var width = (int)Math.Round(Bounds.Width * screen.Scaling);
-        var height = (int)Math.Round(Bounds.Height * screen.Scaling);
+        ApplyScreenConstraints(Bounds.Width, Bounds.Height, targetScreen: screen);
+        var width = (int)Math.Round(Width * screen.Scaling);
+        var height = (int)Math.Round(Height * screen.Scaling);
         Position = new PixelPoint(
             Math.Clamp(Position.X, screen.WorkingArea.X, Math.Max(screen.WorkingArea.X, screen.WorkingArea.Right - width)),
             Math.Clamp(Position.Y, screen.WorkingArea.Y, Math.Max(screen.WorkingArea.Y, screen.WorkingArea.Bottom - height)));
+        _windowSizeSaveTimer.Stop();
+        _windowSizeSaveTimer.Start();
     }
 
     private void OnEdgeHoverTimerTick(object? sender, EventArgs e)
@@ -931,6 +941,7 @@ public partial class MainWindow : Window
         UpdateStatusAnimationState(restartActiveClocks: true);
         // 窗口已关联实际句柄，安装子类化拦截 WM_EXITSIZEMOVE
         InstallWndProcSubclass();
+        Dispatcher.UIThread.Post(CompleteSavedPlacementRestore, DispatcherPriority.Loaded);
     }
 
     public static (bool FadeTop, bool FadeBottom) GetScrollFadeDirections(
@@ -958,7 +969,7 @@ public partial class MainWindow : Window
 
     private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        if (!_hasRestoredWindowSize || WindowState != WindowState.Normal) return;
+        if (_isRestoringPlacement || _isHiddenToTray || _isDocked || !_hasRestoredWindowSize || WindowState != WindowState.Normal) return;
         _windowSizeSaveTimer.Stop();
         _windowSizeSaveTimer.Start();
     }
@@ -989,6 +1000,8 @@ public partial class MainWindow : Window
 
     public void HideToTray()
     {
+        PersistWindowPlacement();
+        _isHiddenToTray = true;
         EndInputEditing();
         Hide();
         if (_isDocked) BeginUndockForDrag();
@@ -1004,7 +1017,7 @@ public partial class MainWindow : Window
     {
         if (!_hasRestoredWindowSize || WindowState != WindowState.Normal || DataContext is not MainViewModel vm)
             return;
-        vm.SaveWindowSize(Bounds.Width, Bounds.Height);
+        PersistWindowPlacement();
     }
 
     private void AttachQualityMeterPointerHandlers()
@@ -1117,6 +1130,12 @@ public partial class MainWindow : Window
 
     public void ActivateFromExternalRequest()
     {
+        if (_isRestoringPlacement)
+        {
+            _activateAfterPlacementRestore = true;
+            return;
+        }
+        _isHiddenToTray = false;
         if (_isDocked) BeginUndockForDrag();
         var wasMinimized = WindowState == WindowState.Minimized;
         if (!IsVisible)
@@ -1126,6 +1145,7 @@ public partial class MainWindow : Window
 
         _documentSyncTimer.Start();
         UpdateStatusAnimationState(restartActiveClocks: false);
+        PersistWindowPlacement();
         Activate();
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
 
