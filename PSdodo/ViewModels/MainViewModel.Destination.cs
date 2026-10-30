@@ -33,6 +33,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(IsCustomDestination));
         OnPropertyChanged(nameof(IsPresetDestination));
         NotifyExportDestinationChanged();
+        QueueParameterMemory();
     }
 
     private void UpdateDocumentDirectory(string directory)

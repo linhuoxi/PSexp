@@ -43,7 +43,16 @@ public partial class MainViewModel : ViewModelBase
         Destination = s.DefaultDestination is { } savedDestination && Enum.IsDefined(savedDestination)
             ? savedDestination
             : string.IsNullOrWhiteSpace(s.DefaultExportPath) ? ExportDestination.DocumentFolder : ExportDestination.Custom;
-        _format = s.DefaultFormat;
+        _format = Enum.IsDefined(s.DefaultFormat) ? s.DefaultFormat : ExportFormat.Jpg;
+        _isJpgFormat = _format == ExportFormat.Jpg;
+        _quickImageName = s.QuickImageName ?? string.Empty;
+        _layerImagePrefix = s.LayerImagePrefix ?? string.Empty;
+        _selectedMode = Enum.IsDefined(s.LastExportMode) ? s.LastExportMode : ExportMode.QuickExport;
+        _exportPathOption = Enum.IsDefined(s.LastArtboardPathOption) ? s.LastArtboardPathOption : ExportPathOption.ImageOnly;
+        _imageName = _selectedMode == ExportMode.Layers ? _layerImagePrefix : _quickImageName;
+        _sliceFolderName = s.SliceFolderName ?? string.Empty;
+        _selectedSettingsSection = Math.Clamp(s.LastSettingsSection, 0, 3);
+        _isViewSetting = s.ShowSettingsOnStartup;
         Quality = s.DefaultQuality;
         AutoRename = s.DefaultAutoRename;
         FileName = s.SliceFilePrefix ?? string.Empty;
@@ -74,7 +83,6 @@ public partial class MainViewModel : ViewModelBase
         ExportedFiles = new ObservableCollection<ExportedFileViewModel>();
         AvailableFormats = Enum.GetValues<ExportFormat>();
         AvailableModes = Enum.GetValues<ExportMode>();
-        _selectedMode = ExportMode.QuickExport;
 
         // 启动时探测一次，之后改为手动刷新（避免后台轮询干扰 PS）
         _ = RefreshStatusAsync(silent: false);
@@ -367,11 +375,18 @@ public partial class MainViewModel : ViewModelBase
     public ExportPathOption[] AvailableExportOptions { get; } = Enum.GetValues<ExportPathOption>();
 
     /// <summary>格式变化时同步 IsJpgFormat（UI 据此控制 JPG 质量行显示/隐藏）</summary>
-    partial void OnFormatChanged(ExportFormat value) => IsJpgFormat = value == ExportFormat.Jpg;
+    partial void OnFormatChanged(ExportFormat value)
+    {
+        IsJpgFormat = value == ExportFormat.Jpg;
+        QueueParameterMemory();
+    }
 
     /// <summary>导出模式切换时刷新派生属性通知</summary>
     partial void OnSelectedModeChanged(ExportMode value)
     {
+        if (value == ExportMode.QuickExport) ImageName = _quickImageName;
+        else if (value == ExportMode.Layers) ImageName = _layerImagePrefix;
+        QueueParameterMemory();
         OnPropertyChanged(nameof(IsFileNameVisible));
         OnPropertyChanged(nameof(IsLayerMode));
         OnPropertyChanged(nameof(ShowLayerSelection));
@@ -577,18 +592,35 @@ public partial class MainViewModel : ViewModelBase
 
     private bool _documentSyncInProgress;
     private string _autoDocumentKey = "";
+    private bool _hasUxpSyncSnapshot;
+    private string _lastUxpSyncWindow = string.Empty;
+    private uint _lastUxpSyncInput;
+    private DateTime _lastUxpSyncUtc;
+
     public async Task SyncPhotoshopDocumentAsync()
     {
-        if (!AutoRefreshOnActivated || IsBusy || IsRefreshingStatus || _documentSyncInProgress
-            || !PhotoshopFocus.IsForeground()) return;
+        if (!AutoRefreshOnActivated || IsBusy || IsRefreshingStatus || _documentSyncInProgress) return;
+        if (!PhotoshopFocus.TryGetIdleForegroundSnapshot(out var windowKey, out var inputTick)) return;
         _documentSyncInProgress = true;
         try
         {
             if (!_ps.SupportsBackgroundIdentityProbe)
             {
-                // Photoshop is already foreground; UXP dispatch must not activate it from another app.
-                // One in-flight refresh covers the configured timer interval, including slow hosts.
+                // Launch once after new activity settles, not on every timer tick. Read-only UXP scripts
+                // still run in Photoshop's scripting engine and can interrupt shortcuts when dispatched repeatedly.
+                if (_hasUxpSyncSnapshot && _lastUxpSyncInput == inputTick && _lastUxpSyncWindow == windowKey
+                    && (DateTime.UtcNow - _lastUxpSyncUtc).TotalSeconds < 60) return;
+                _hasUxpSyncSnapshot = true;
+                _lastUxpSyncInput = inputTick;
+                _lastUxpSyncWindow = windowKey;
+                _lastUxpSyncUtc = DateTime.UtcNow;
                 await RefreshStatusAsync(silent: true);
+                // Account for input that the dispatch itself may have caused, without queuing another probe.
+                if (PhotoshopFocus.TryGetIdleForegroundSnapshot(out var currentWindow, out var currentInput))
+                {
+                    _lastUxpSyncInput = currentInput;
+                    _lastUxpSyncWindow = currentWindow;
+                }
                 return;
             }
             var identity = await _ps.ExecuteScriptAsync("probe/document_identity", new Dictionary<string,string>());
@@ -666,7 +698,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void SaveAsDefault()
     {
-        if (_settings.Save(CreateAppSettings(useCurrentExportValues: true)))
+        if (_settings.Save(CreateAppSettings()))
         {
             ExportStatusText = "默认参数已保存";
             SettingsStatusText = "默认导出参数已保存";
@@ -681,17 +713,24 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private AppSettings CreateAppSettings(bool useCurrentExportValues)
+    private AppSettings CreateAppSettings()
     {
         var current = _settings.Current;
         return new AppSettings
         {
-            DefaultExportPath = useCurrentExportValues ? ExportPath : current.DefaultExportPath,
-            DefaultDestination = useCurrentExportValues ? Destination : current.DefaultDestination,
-            DefaultFormat = useCurrentExportValues ? Format : current.DefaultFormat,
-            DefaultQuality = useCurrentExportValues ? Quality : current.DefaultQuality,
+            DefaultExportPath = ExportPath,
+            DefaultDestination = Destination,
+            DefaultFormat = Format,
+            DefaultQuality = Math.Clamp(Quality, 1, 100),
             DefaultAutoRename = AutoRename,
             SliceFilePrefix = FileName,
+            SliceFolderName = SliceFolderName,
+            QuickImageName = _quickImageName,
+            LayerImagePrefix = _layerImagePrefix,
+            LastExportMode = SelectedMode,
+            LastArtboardPathOption = ExportPathOption,
+            LastSettingsSection = SelectedSettingsSection,
+            ShowSettingsOnStartup = IsViewSetting,
             PhotoshopExePath = current.PhotoshopExePath,
             PollingIntervalMs = current.PollingIntervalMs,
             LayerExportWithDocName = LayerExportWithDocName,
@@ -727,7 +766,7 @@ public partial class MainViewModel : ViewModelBase
 
         _windowWidth = normalizedWidth;
         _windowHeight = normalizedHeight;
-        if (!_settings.Save(CreateAppSettings(useCurrentExportValues: false)))
+        if (!_settings.Save(CreateAppSettings()))
         {
             ExportStatusText = "窗口尺寸保存失败";
             AppendLog("Error", "窗口尺寸保存失败，请检查数据目录写入权限");
@@ -739,7 +778,7 @@ public partial class MainViewModel : ViewModelBase
     private void SaveBehaviorSettings()
     {
         if (!_settingsInitialized) return;
-        if (!_settings.Save(CreateAppSettings(useCurrentExportValues: false)))
+        if (!_settings.Save(CreateAppSettings()))
         {
             ExportStatusText = "设置自动保存失败";
             SettingsStatusText = "自动保存失败，请检查数据目录写入权限";
@@ -961,6 +1000,7 @@ public partial class MainViewModel : ViewModelBase
             Quality = Quality,
             AutoRename = AutoRename,
             FileName = SelectedMode == ExportMode.Slices ? FileName : string.Empty,
+            SliceFolderName = SelectedMode == ExportMode.Slices ? SliceFolderName : string.Empty,
             ImageName = effectiveImageName,
             LayerExportWithDocName = LayerExportWithDocName,
             LayerExportRecursive = LayerExportRecursive,
@@ -989,12 +1029,16 @@ public partial class MainViewModel : ViewModelBase
         return bool.TryParse(value?.ToString(), out var parsed) && parsed;
     }
 
-    partial void OnExportPathChanged(string value) => NotifyExportDestinationChanged();
+    partial void OnExportPathChanged(string value)
+    {
+        NotifyExportDestinationChanged();
+        QueueParameterMemory();
+    }
 
     partial void OnFileNameChanged(string value)
     {
         RefreshCanExecute();
-        SaveBehaviorSettings();
+        QueueParameterMemory();
     }
 
     partial void OnIsExportingChanged(bool value)

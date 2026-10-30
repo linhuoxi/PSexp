@@ -56,7 +56,7 @@ public sealed partial class PhotoshopService
                         document.Path = Path.IsPathFullyQualified(document.Path) ? Path.GetDirectoryName(document.Path) ?? "" : "";
                         var logs = new List<PsLogEntry>
                         {
-                            new() { Level = PsLogLevel.Info, Message = "已通过 UXP 读取文档；开启自动同步时，在 Photoshop 前台按设置间隔串行刷新，导出前再次刷新。" }
+                            new() { Level = PsLogLevel.Info, Message = "已通过 UXP 读取文档；开启自动同步时，Photoshop 前台停止输入后合并刷新，导出前再次刷新。" }
                         };
                         foreach (var warning in root.GetProperty("warnings").EnumerateArray())
                             logs.Add(new PsLogEntry { Level = PsLogLevel.Warn, Message = warning.GetString() ?? "" });

@@ -16,7 +16,7 @@ public partial class MainViewModel
         _windowPlacement = placement;
         _windowWidth = w;
         _windowHeight = h;
-        if (!_settings.Save(CreateAppSettings(useCurrentExportValues: false)))
+        if (!_settings.Save(CreateAppSettings()))
         {
             (_windowPlacement, _windowWidth, _windowHeight) = previous;
             AppendLog("Error", "窗口位置与收纳状态保存失败，请检查数据目录写入权限。");

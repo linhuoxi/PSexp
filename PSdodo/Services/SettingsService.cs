@@ -61,8 +61,6 @@ public sealed class SettingsService : ISettingsService
         (Current.WindowWidth, Current.WindowHeight) = NormalizeWindowSize(
             Current.WindowWidth,
             Current.WindowHeight);
-        if (string.IsNullOrWhiteSpace(Current.DefaultExportPath))
-            Current.DefaultExportPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         return Current;
     }
 

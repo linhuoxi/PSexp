@@ -6,6 +6,24 @@ namespace PsExporter.Services;
 
 public static class ExportSettingsValidator
 {
+
+    public static bool TryValidateSliceFolder(string name, out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrEmpty(name)) return true;
+        var stem = name.Split('.')[0];
+        var reserved = new[] { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+        if (name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || name.Contains('/') || name.Contains('\\') || name.EndsWith('.') || name.EndsWith(' ')
+            || Array.Exists(reserved, item => item.Equals(stem, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "切片文件夹名称无效：请填写单个文件夹名，不含路径、非法字符或系统保留名称";
+            return false;
+        }
+        return true;
+    }
+
     public static bool TryPrepare(ExportSettings settings, out string error)
     {
         error = string.Empty;
@@ -22,6 +40,9 @@ public static class ExportSettingsValidator
             error = $"图片质量必须在 {ExportSettings.MinimumQuality:0} 到 {ExportSettings.MaximumQuality:0} 之间";
             return false;
         }
+
+        settings.SliceFolderName = (settings.SliceFolderName ?? string.Empty).Trim();
+        if (!TryValidateSliceFolder(settings.SliceFolderName, out error)) return false;
 
         try
         {

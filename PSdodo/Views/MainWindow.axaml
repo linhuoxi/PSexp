@@ -636,6 +636,23 @@
                                                          Padding="10,0"/></controls:ContinuousBorder>
                                             </Grid>
 
+                                            <!-- Optional slice subfolder; shares the existing parameter grid and input style. -->
+                                            <Grid ColumnDefinitions="76,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" VerticalAlignment="Center"
+                                                  IsVisible="{Binding IsFileNameVisible}">
+                                                <TextBlock Text="切片文件夹" Classes="label"
+                                                           ToolTip.Tip="填写后在输出位置内创建或复用同名子文件夹；留空直接导出。"/>
+                                                <controls:ContinuousBorder Grid.Column="1" Classes="input-shell"
+                                                    Height="{StaticResource Control.InputHeight}" CornerRadius="{StaticResource Radius.Sm}"
+                                                    Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Border}" BorderThickness="1">
+                                                    <TextBox Background="Transparent" BorderThickness="0" Text="{Binding SliceFolderName}"
+                                                        PlaceholderText="留空不建文件夹" AutomationProperties.Name="切片文件夹名称（可选）"
+                                                        VerticalContentAlignment="Center" Padding="10,0"/>
+                                                </controls:ContinuousBorder>
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4,0,0" Text="{Binding SliceFolderNameError}"
+                                                    IsVisible="{Binding HasSliceFolderNameError}" TextWrapping="Wrap" FontSize="12"
+                                                    Foreground="{StaticResource Brush.Error}"/>
+                                            </Grid>
+
                                             <!-- 7. Slice Prefix -->
                                             <Grid ColumnDefinitions="76,*"
                                                   ColumnSpacing="12"
@@ -918,12 +935,11 @@
                                     </controls:ContinuousBorder>
                                     <controls:ContinuousBorder Classes="settings-section">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Text="默认导出参数" Classes="settings-group-title"/>
+                                            <TextBlock Text="参数记忆" Classes="settings-group-title"/>
                                             <controls:ContinuousBorder Classes="settings-summary">
-                                                <TextBlock Text="{Binding DefaultExportSummary}" Classes="setting-description" TextWrapping="Wrap"/>
+                                                <TextBlock Text="输出位置、格式、质量与各模式参数会自动保存。" Classes="setting-description" TextWrapping="Wrap"/>
                                             </controls:ContinuousBorder>
-                                            <Button Classes="secondary" Command="{Binding SaveAsDefaultCommand}" Content="将当前参数设为默认" HorizontalAlignment="Stretch"/>
-                                            <TextBlock Text="只在点击后保存当前导出参数。" Classes="settings-caption"/>
+                                            <TextBlock Text="清空也会记住，重启后恢复上次选择。" Classes="settings-caption"/>
                                         </StackPanel>
                                     </controls:ContinuousBorder>
                                 </StackPanel>
@@ -932,7 +948,7 @@
                                         <StackPanel Spacing="12">
                                             <TextBlock Text="Photoshop" Classes="settings-group-title"/>
                                             <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                <TextBlock Text="自动同步文档" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="Photoshop 在前台时检查文档切换，导出期间暂停。"/>
+                                                <TextBlock Text="自动同步文档" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="Photoshop 在前台且停止输入后同步；按键按住、绘制和导出期间暂停。"/>
                                                 <Panel Grid.Column="1">
                                                     <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoRefreshOnActivated}">
                                                         <Grid ColumnDefinitions="*,*">
@@ -951,7 +967,7 @@
                                                 </Panel>
                                             </Grid>
                                             <Grid Classes="settings-row" ColumnDefinitions="*,168" ColumnSpacing="12">
-                                                <TextBlock Text="检查间隔" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="更短的间隔响应更快；更长的间隔减少后台检查。"/>
+                                                <TextBlock Text="检查间隔" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="控制检查频率；同步会等待操作空闲，避免打断快捷键和绘制。"/>
                                                 <controls:AnimatedSegmentTrack Grid.Column="1" Classes="choice-track" VerticalAlignment="Center" SelectionValue="{Binding DocumentSyncIntervalMs}" IsEnabled="{Binding AutoRefreshOnActivated}">
                                                     <Grid ColumnDefinitions="*,*,*">
                                                         <Button Grid.Column="0" Classes="seg" Command="{Binding SetDocumentSyncIntervalCommand}" CommandParameter="800">

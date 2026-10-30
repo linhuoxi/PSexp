@@ -107,6 +107,7 @@ public sealed class ExportService : IExportService
         Quality = source.Quality,
         AutoRename = source.AutoRename,
         FileName = source.FileName,
+        SliceFolderName = source.SliceFolderName,
         ImageName = source.ImageName,
         LayerExportWithDocName = source.LayerExportWithDocName,
         LayerExportRecursive = source.LayerExportRecursive,
@@ -172,7 +173,14 @@ public sealed class ExportService : IExportService
         => ExportLayerBatchAsync(s, sliceMode: false, onProgress, ct);
 
     public Task<PsBridgeResult> ExportSlicesAsync(ExportSettings s, ExportProgressHandler? onProgress = null, CancellationToken ct = default)
-        => ExportLayerBatchAsync(s, sliceMode: true, onProgress, ct);
+        => ExportLayerBatchAsync(CloneWithExportPath(s, ResolveSliceExportPath(s)), sliceMode: true, onProgress, ct);
+
+    public static string ResolveSliceExportPath(ExportSettings settings)
+    {
+        var name = (settings.SliceFolderName ?? string.Empty).Trim();
+        if (!ExportSettingsValidator.TryValidateSliceFolder(name, out var error)) throw new ArgumentException(error);
+        return string.IsNullOrEmpty(name) ? settings.ExportPath : Path.Combine(settings.ExportPath, name);
+    }
 
     private async Task<PsBridgeResult> ExportLayerBatchAsync(
         ExportSettings s, bool sliceMode, ExportProgressHandler? onProgress, CancellationToken ct)

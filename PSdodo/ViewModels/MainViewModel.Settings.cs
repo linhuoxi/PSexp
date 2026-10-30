@@ -27,6 +27,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(IsSettingsExport));
         OnPropertyChanged(nameof(IsSettingsLink));
         OnPropertyChanged(nameof(IsSettingsUpdate));
+        QueueParameterMemory();
     }
     [RelayCommand] private void SelectSettingsSection(object? value)
     {

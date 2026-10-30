@@ -188,7 +188,11 @@ public partial class MainWindow : Window
         Opened += async (_, _) => { if (DataContext is MainViewModel model) await model.InitializeUpdatesAsync(); };
         Closed += (_, _) => { if (DataContext is MainViewModel model) model.StopUpdateChecks(); };
         Activated += OnWindowActivated;
-        Deactivated += (_, _) => EndInputEditing();
+        Deactivated += (_, _) =>
+        {
+            EndInputEditing();
+            if (DataContext is MainViewModel model) model.FlushParameterMemory();
+        };
         PositionChanged += OnWindowPositionChanged;
         SizeChanged += OnWindowSizeChanged;
         Closing += OnWindowClosing;
@@ -982,6 +986,8 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
     {
+        EndInputEditing();
+        if (DataContext is MainViewModel model) model.FlushParameterMemory();
         _windowSizeSaveTimer.Stop();
         SaveCurrentWindowSize();
         if (e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
@@ -1098,6 +1104,12 @@ public partial class MainWindow : Window
     private void EndInputEditing(KeyModifiers modifiers = KeyModifiers.None)
     {
         if (FindFocusedEditor() is null) return;
+        if (!IsActive)
+        {
+            // Clear logical editing focus without asking an inactive native window to take keyboard focus.
+            FocusManager?.Focus(null!, NavigationMethod.Pointer, modifiers);
+            return;
+        }
         // 将焦点交给窗口，避免空白/非焦点按钮把键盘焦点继续留在输入框。
         if (!Focus(NavigationMethod.Pointer, modifiers))
             FocusManager?.Focus(null!, NavigationMethod.Pointer, modifiers);

@@ -24,6 +24,15 @@ public sealed class AppSettings
     /// <summary>切片文件名前缀，可为空；清空后仍持久保存为空。</summary>
     public string SliceFilePrefix { get; set; } = string.Empty;
 
+    public string SliceFolderName { get; set; } = string.Empty;
+    public string QuickImageName { get; set; } = string.Empty;
+    public string LayerImagePrefix { get; set; } = string.Empty;
+    public ExportMode LastExportMode { get; set; } = ExportMode.QuickExport;
+    public ExportPathOption LastArtboardPathOption { get; set; } = ExportPathOption.ImageOnly;
+    public int LastSettingsSection { get; set; }
+    public bool ShowSettingsOnStartup { get; set; }
+
+
     public string? PhotoshopExePath { get; set; }
 
     /// <summary>文档状态轮询间隔（毫秒）</summary>
