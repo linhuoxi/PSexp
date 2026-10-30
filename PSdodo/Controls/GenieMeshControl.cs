@@ -1,4 +1,7 @@
 using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -31,23 +34,55 @@ internal sealed class GenieTexture : IDisposable
     }
 }
 
+// 仅收集实际进入 Skia 绘制的间隔；它不是显示器最终呈现帧率。
+internal sealed class GenieFrameTiming
+{
+    private long _last;
+    private long _maxGap;
+    private int _frames;
+
+    internal void Drawn()
+    {
+        var now = Stopwatch.GetTimestamp();
+        var previous = Interlocked.Exchange(ref _last, now);
+        Interlocked.Increment(ref _frames);
+        if (previous == 0) return;
+        var gap = now - previous;
+        long old;
+        do { old = Volatile.Read(ref _maxGap); if (gap <= old) return; }
+        while (Interlocked.CompareExchange(ref _maxGap, gap, old) != old);
+    }
+
+    internal string Summary => FormattableString.Invariant(
+        $"draw_frames={Volatile.Read(ref _frames)} draw_max_gap_ms={Volatile.Read(ref _maxGap) * 1000d / Stopwatch.Frequency:F1}");
+}
+
 internal class GenieMeshOperation : ICustomDrawOperation
 {
     public Rect Bounds { get; }
     private GenieTexture? _texture;
     public EdgeSnapHelper.GenieMeshData? MeshData { get; }
     public SKPoint[]? TextureCoordinates { get; }
+    private readonly byte _alpha;
+    private readonly TaskCompletionSource<bool>? _drawReady;
+    private readonly GenieFrameTiming _timing;
 
     public GenieMeshOperation(
         Rect bounds,
         GenieTexture texture,
         EdgeSnapHelper.GenieMeshData? meshData,
-        SKPoint[]? textureCoordinates)
+        SKPoint[]? textureCoordinates,
+        double opacity,
+        TaskCompletionSource<bool>? drawReady,
+        GenieFrameTiming timing)
     {
         Bounds = bounds;
         _texture = texture.Acquire();
         MeshData = meshData;
         TextureCoordinates = textureCoordinates;
+        _alpha = (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
+        _drawReady = drawReady;
+        _timing = timing;
     }
 
     public void Dispose() => System.Threading.Interlocked.Exchange(ref _texture, null)?.Dispose();
@@ -61,16 +96,22 @@ internal class GenieMeshOperation : ICustomDrawOperation
         var skiaContext = context.TryGetFeature<ISkiaSharpApiLeaseFeature>();
         if (skiaContext is null || _texture is null || MeshData is null || TextureCoordinates is null) return;
 
-        using var lease = skiaContext.Lease();
-        var canvas = lease.SkCanvas;
-
-        canvas.DrawVertices(
-            SKVertexMode.Triangles,
-            MeshData.Vertices,
-            TextureCoordinates,
-            null,
-            MeshData.Indices,
-            _texture.Paint);
+        using (var lease = skiaContext.Lease())
+        {
+            var canvas = lease.SkCanvas;
+            // 直接在 Skia 画笔上改变透明度，避免为整个动画表面额外建立 opacity 图层。
+            // Paint 只在渲染线程修改；每个绘制操作都保存自己对应的透明度。
+            _texture.Paint.Color = SKColors.White.WithAlpha(_alpha);
+            canvas.DrawVertices(
+                SKVertexMode.Triangles,
+                MeshData.Vertices,
+                TextureCoordinates,
+                null,
+                MeshData.Indices,
+                _texture.Paint);
+        }
+        _timing.Drawn();
+        _drawReady?.TrySetResult(true);
     }
 }
 
@@ -80,6 +121,25 @@ public class GenieMeshControl : Control
     private SKPoint[]? _textureCoordinatesSource;
     private GenieTexture? _texture;
     private double _cachedTextureScale = double.NaN;
+    private TaskCompletionSource<bool>? _drawReady;
+    private GenieFrameTiming _frameTiming = new();
+
+    internal string FrameTimingSummary => _frameTiming.Summary;
+    internal void BeginFrameTiming() => _frameTiming = new GenieFrameTiming();
+
+    internal Task<bool> WaitForDrawAsync()
+    {
+        CancelPendingDraw();
+        _drawReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        InvalidateVisual();
+        return _drawReady.Task;
+    }
+
+    internal void CancelPendingDraw()
+    {
+        _drawReady?.TrySetResult(false);
+        _drawReady = null;
+    }
 
     public static readonly StyledProperty<SKBitmap?> BitmapProperty =
         AvaloniaProperty.Register<GenieMeshControl, SKBitmap?>(nameof(Bitmap));
@@ -89,6 +149,15 @@ public class GenieMeshControl : Control
 
     public static readonly StyledProperty<double> TextureScaleProperty =
         AvaloniaProperty.Register<GenieMeshControl, double>(nameof(TextureScale), 1.0);
+
+    public static readonly StyledProperty<double> MeshOpacityProperty =
+        AvaloniaProperty.Register<GenieMeshControl, double>(nameof(MeshOpacity), 1);
+
+    public double MeshOpacity
+    {
+        get => GetValue(MeshOpacityProperty);
+        set => SetValue(MeshOpacityProperty, value);
+    }
 
     public SKBitmap? Bitmap
     {
@@ -110,7 +179,7 @@ public class GenieMeshControl : Control
 
     static GenieMeshControl()
     {
-        AffectsRender<GenieMeshControl>(BitmapProperty, MeshDataProperty, TextureScaleProperty);
+        AffectsRender<GenieMeshControl>(BitmapProperty, MeshDataProperty, TextureScaleProperty, MeshOpacityProperty);
     }
 
     private SKPoint[]? GetTextureCoordinates()
@@ -153,6 +222,9 @@ public class GenieMeshControl : Control
             new Rect(0, 0, Bounds.Width, Bounds.Height),
             _texture,
             MeshData,
-            GetTextureCoordinates()));
+            GetTextureCoordinates(),
+            MeshOpacity,
+            _drawReady is { Task.IsCompleted: false } ? _drawReady : null,
+            _frameTiming));
     }
 }

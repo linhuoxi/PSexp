@@ -40,7 +40,6 @@ public partial class MainWindow : Window
     private bool _isDocked;
     private bool _isDockRevealed;
     private bool _isSnapAnimating;
-    private bool _dockRevealPending;
     private bool _isEdgeFinishing;
     private bool _isClosing;
     private double _dockScaling = 1;
@@ -49,7 +48,6 @@ public partial class MainWindow : Window
     private double _lastFrameMs;
     private double _maxFrameGapMs;
     private int _edgeAnimationGeneration;
-    private int _snapDurationMs = 380;
     private DateTime _pointerOutsideDockSince = DateTime.MinValue;
     private readonly Stopwatch _psPulseClock = new();
     private readonly Stopwatch _refreshRotationClock = new();
@@ -58,7 +56,7 @@ public partial class MainWindow : Window
     private readonly RotateTransform _refreshIconRotateTransform = new();
     private static readonly PixelPoint _offscreenParkPos = new(-32000, -32000);
     private SKBitmap? _genieCapturedBitmap;
-    // 收纳后的静态快照保留到下一次展开，避免图标悬停时重新渲染并 PNG 编解码造成起步顿挫。
+    // 最近一次神灯快照与纹理保留到下次动作准备或退出收纳，避免展开末帧集中释放资源。
     private SKBitmap? _dockRevealBitmap;
     private GenieAnimationWindow? _genieAnimationWindow;
     private DockIconWindow? _dockIconWindow;
@@ -184,7 +182,7 @@ public partial class MainWindow : Window
         {
             _hasProbedCurrentActivation = false;
             EndInputEditing();
-            if (DataContext is MainViewModel model) model.FlushParameterMemory();
+            if (!_isSnapAnimating && DataContext is MainViewModel model) model.FlushParameterMemory();
         };
         PositionChanged += OnWindowPositionChanged;
         SizeChanged += OnWindowSizeChanged;
@@ -236,6 +234,8 @@ public partial class MainWindow : Window
 
     private void AttachAnimationViewModel(MainViewModel? viewModel)
     {
+        _animationViewModel?.SetWindowAnimationActive(false);
+        InvalidateRetractSnapshot();
         if (ReferenceEquals(_animationViewModel, viewModel)) return;
         if (_animationViewModel is not null)
             _animationViewModel.PropertyChanged -= OnAnimationViewModelPropertyChanged;
@@ -249,6 +249,9 @@ public partial class MainWindow : Window
 
     private void OnAnimationViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        ++_edgeSceneRevision;
+        _dockRevealBitmapStale = true;
+        InvalidateRetractSnapshot();
         if (e.PropertyName == nameof(MainViewModel.Quality))
         {
             PulseQualityMeter();
@@ -389,6 +392,7 @@ public partial class MainWindow : Window
     private void OnWindowClosed(object? sender, EventArgs e)
     {
         _isClosing = true;
+        _animationViewModel?.SetWindowAnimationActive(false);
         StopSettingsPageFade();
         _settingsPageFadeTimer.Tick -= OnSettingsPageFadeTick;
         Screens.Changed -= OnScreensChanged;
@@ -511,6 +515,7 @@ public partial class MainWindow : Window
 
     private void OnWindowPositionChanged(object? sender, PixelPointEventArgs e)
     {
+        InvalidateRetractSnapshot();
         if (_isRestoringPlacement || _isHiddenToTray || _isSnapAnimating || _isDocked) return;
         if (!_hasRestoredWindowSize || WindowState != WindowState.Normal) return;
 
@@ -525,7 +530,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// 评估拖拽结束的位置。进入 48 DIP 的边缘热区即开始神灯收纳，最终变成贴边半露出图标。
     /// </summary>
-    public bool EvaluateAndStartEdgeSnap(int thresholdDip = 48, int durationMs = 280)
+    public bool EvaluateAndStartEdgeSnap(int thresholdDip = 48, int durationMs = DockAnimationMotion.HideDurationMs)
     {
         if (_isClosing || _isRestoringPlacement || !_placementRestorationCompleted || _isSnapAnimating || _isDocked || WindowState != WindowState.Normal) return false;
         if (DataContext is not MainViewModel vm || !vm.EnableEdgeSnap) return false;
@@ -566,13 +571,14 @@ public partial class MainWindow : Window
         _isDocked = true;
         _isDockRevealed = false;
         vm.IsEdgeDocked = true;
-        PersistWindowPlacement();
+        // 位置写盘移到动画交接后；关闭/托盘路径仍会独立补存。
         StartEdgeAnimation(_dockHiddenPos, durationMs);
         return true;
     }
 
     private SKBitmap? CaptureWindowBitmap()
     {
+        SKBitmap? bitmap = null;
         try
         {
             var widthDip = Bounds.Width;
@@ -591,7 +597,7 @@ public partial class MainWindow : Window
             rtb.Render(RootGrid);
 
             var info = new SKImageInfo(pixelWidth, pixelHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
-            var bitmap = new SKBitmap(info);
+            bitmap = new SKBitmap(info);
             rtb.CopyPixels(
                 new PixelRect(0, 0, pixelWidth, pixelHeight),
                 bitmap.GetPixels(),
@@ -600,15 +606,20 @@ public partial class MainWindow : Window
             bitmap.SetImmutable();
             return bitmap;
         }
-        catch
+        catch (Exception error)
         {
+            bitmap?.Dispose();
+            if (DataContext is MainViewModel diagnostics)
+                diagnostics.LogDockAnimation("[dock] capture failed: " + error, failure: true);
             return null;
         }
     }
 
-    private void CloseGenieAnimationWindow()
+    private void CloseGenieAnimationWindow(bool retainTexture = false, bool restoreInput = true)
     {
-        _genieAnimationWindow?.Park(_offscreenParkPos);
+        if (restoreInput) ResetLiveWindowPreparation();
+        InvalidateRetractSnapshot();
+        _genieAnimationWindow?.Park(_offscreenParkPos, retainTexture);
         _genieCapturedBitmap?.Dispose();
         _genieCapturedBitmap = null;
     }
@@ -619,17 +630,17 @@ public partial class MainWindow : Window
         _dockRevealBitmap = null;
     }
 
-    private void ShowDockIcon()
+    private void ShowDockIcon(double collapse = 1)
     {
         if (_dockIconWindow is null)
         {
-            var screen = Screens.ScreenFromPoint(_dockIconPlacement.Position) ?? Screens.Primary;
-            var scaling = Math.Max(screen?.Scaling ?? 1.0, 0.1);
-            var sizeDip = _dockIconPlacement.SizePx / scaling;
+            var sizeDip = _dockIconPlacement.SizePx / Math.Max(_dockScaling, 0.1);
             _dockIconWindow = new DockIconWindow(_dockIconPlacement.Position, sizeDip);
             _dockIconWindow.RevealRequested += OnDockIconRevealRequested;
+            _dockIconWindow.SetTransition(collapse);
             _dockIconWindow.Show(); // 独立顶层工具窗，不随主窗口 Win+D 最小化。
         }
+        _dockIconWindow.SetTransition(collapse);
         _dockIconWindow.ShowAt(_dockIconPlacement.Position, _dockIconPlacement.SizePx / _dockScaling, _dockScaling);
     }
 
@@ -638,31 +649,18 @@ public partial class MainWindow : Window
         _dockIconWindow?.Park(_offscreenParkPos);
     }
 
-    private void OnDockIconRevealRequested(object? sender, EventArgs e)
+    private void OnDockIconRevealRequested(object? sender, DockIconRevealEventArgs e)
     {
         if (!_isDocked || _isDockRevealed) return;
-        if (_isSnapAnimating)
-        {
-            _dockRevealPending = true;
-            return;
-        }
-        _isDockRevealed = true;
-        _pointerOutsideDockSince = DateTime.MinValue;
-        StartEdgeAnimation(_dockExpandedPos, durationMs: 260);
+        // 首次拖到边缘时，不能因为刚出现的透明热区恰好落在鼠标下就立即弹回。
+        if (_isSnapAnimating && !e.IsClick && !_edgeCanReverseOnPointerReturn) return;
+        StartEdgeAnimation(_dockExpandedPos, DockAnimationMotion.RevealDurationMs);
     }
-
-    /// <summary>
-    /// 展开/收纳的神灯动画都从“完整窗口原位置”进行渲染。
-    /// 收纳终态才将真实窗口挪到隐藏位置并替换为边缘图标。
-    /// </summary>
-    private PixelPoint GetAnimationCanvasPosition(bool isHiding)
-        => _dockExpandedPos;
 
     private void BeginUndockForDrag()
     {
         if (!_isDocked) return;
         _edgeHoverTimer.Stop();
-        _dockRevealPending = false;
         _edgeAnimationGeneration++;
         _isSnapAnimating = false;
         _isEdgeFinishing = false;
@@ -677,7 +675,10 @@ public partial class MainWindow : Window
         _isDockRevealed = false;
         _dockedEdge = DockEdge.None;
         if (DataContext is MainViewModel vm)
+        {
+            vm.SetWindowAnimationActive(false);
             vm.IsEdgeDocked = false;
+        }
         UpdateStatusAnimationState(restartActiveClocks: false);
         PersistWindowPlacement();
     }
@@ -694,167 +695,6 @@ public partial class MainWindow : Window
         window.RequestAnimationFrame(_ => completion.TrySetResult());
         // 锁屏、最小化或系统暂停合成时仍要结束交接，不能让收纳状态永久锁住。
         await System.Threading.Tasks.Task.WhenAny(completion.Task, System.Threading.Tasks.Task.Delay(100));
-    }
-
-    private async void StartEdgeAnimation(PixelPoint target, int durationMs)
-    {
-        if (_isClosing || _isSnapAnimating) return;
-        _isSnapAnimating = true; // 在捕获纹理和任何 await 之前锁住，防止悬停重复进入。
-        _isEdgeFinishing = false;
-        _edgeHoverTimer.Stop();
-        UpdateStatusAnimationState(restartActiveClocks: false);
-        var generation = ++_edgeAnimationGeneration;
-        var hiding = target == _dockHiddenPos;
-        _snapTargetPos = target;
-        _snapDurationMs = Math.Max(1, durationMs);
-        try
-        {
-            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-            if (hiding)
-            {
-                ClearDockRevealBitmap();
-                _genieCapturedBitmap = CaptureWindowBitmap();
-            }
-            else
-            {
-                _genieCapturedBitmap = _dockRevealBitmap ?? CaptureWindowBitmap();
-                _dockRevealBitmap = null;
-            }
-            if (_genieCapturedBitmap is null)
-            {
-                await FinishEdgeAnimationAsync(generation, hiding);
-                return;
-            }
-            if (_genieAnimationWindow is null)
-            {
-                _genieAnimationWindow = new GenieAnimationWindow(_dockExpandedPos, Bounds.Width, Bounds.Height,
-                    _genieCapturedBitmap, _captureScale);
-                _genieAnimationWindow.Show();
-            }
-            else
-            {
-                _genieAnimationWindow.Position = _dockExpandedPos;
-                _genieAnimationWindow.Width = Bounds.Width;
-                _genieAnimationWindow.Height = Bounds.Height;
-                _genieAnimationWindow.SetBitmap(_genieCapturedBitmap, _captureScale);
-                if (!_genieAnimationWindow.IsVisible) _genieAnimationWindow.Show();
-                WindowTaskSwitcher.Configure(_genieAnimationWindow, excluded: true, noActivate: true);
-            }
-            SetAnimationMesh(0, hiding);
-            _genieAnimationWindow.Opacity = 1;
-            await NextFrameAsync(_genieAnimationWindow);
-            await NextFrameAsync(_genieAnimationWindow);
-            if (generation != _edgeAnimationGeneration || _isClosing) return;
-            Opacity = 0;
-            Position = _offscreenParkPos;
-            WindowTaskSwitcher.Configure(this, excluded: true);
-            CloseDockIcon();
-            _snapClock.Restart();
-            _frameCount = 0;
-            _lastFrameMs = 0;
-            _maxFrameGapMs = 0;
-            QueueEdgeFrame(generation);
-            _ = EnsureEdgeAnimationCompletesAsync(generation, hiding);
-        }
-        catch (Exception error)
-        {
-            Debug.WriteLine("收纳动画失败: " + error);
-            await FinishEdgeAnimationAsync(generation, hiding);
-        }
-    }
-
-    private EdgeSnapHelper.GenieMeshData? _animationTopology;
-    private void SetAnimationMesh(double progress, bool hiding)
-    {
-        _animationTopology = EdgeSnapHelper.CalculateGenieMeshData(_dockedEdge,
-            EdgeSnapHelper.CalculateGenieAnimationProgress(progress), hiding,
-            (float)Bounds.Width, (float)Bounds.Height, cols: 16, rows: 16, peekPx: 0,
-            topology: _animationTopology);
-        _genieAnimationWindow?.SetMesh(_animationTopology);
-    }
-
-    private void QueueEdgeFrame(int generation)
-        => _genieAnimationWindow?.RequestAnimationFrame(_ => AdvanceEdgeFrame(generation));
-
-    private async System.Threading.Tasks.Task EnsureEdgeAnimationCompletesAsync(int generation, bool hiding)
-    {
-        // 系统隐藏动画承载窗时可能不再提供帧回调。仅在单次动画中保留一次超时兜底。
-        await System.Threading.Tasks.Task.Delay(_snapDurationMs + 200);
-        if (generation == _edgeAnimationGeneration && _isSnapAnimating && !_isEdgeFinishing && !_isClosing)
-            await FinishEdgeAnimationAsync(generation, hiding);
-    }
-
-    private async void AdvanceEdgeFrame(int generation)
-    {
-        if (generation != _edgeAnimationGeneration || !_isSnapAnimating || _isEdgeFinishing || _isClosing) return;
-        var hiding = _snapTargetPos == _dockHiddenPos;
-        try
-        {
-            var elapsed = _snapClock.Elapsed.TotalMilliseconds;
-            _maxFrameGapMs = Math.Max(_maxFrameGapMs, elapsed - _lastFrameMs);
-            _lastFrameMs = elapsed;
-            _frameCount++;
-            var progress = Math.Clamp(elapsed / _snapDurationMs, 0, 1);
-            SetAnimationMesh(progress, hiding);
-            if (progress < 1) QueueEdgeFrame(generation);
-            else await FinishEdgeAnimationAsync(generation, hiding);
-        }
-        catch (Exception error)
-        {
-            Debug.WriteLine("收纳帧失败: " + error);
-            await FinishEdgeAnimationAsync(generation, hiding);
-        }
-    }
-
-    private async System.Threading.Tasks.Task FinishEdgeAnimationAsync(int generation, bool hiding)
-    {
-        if (generation != _edgeAnimationGeneration || _isClosing || _isEdgeFinishing) return;
-        _isEdgeFinishing = true;
-        _snapClock.Stop();
-        if (hiding)
-        {
-            ClearDockRevealBitmap();
-            _dockRevealBitmap = _genieCapturedBitmap; // 转移所有权，不复制整张高 DPI 位图。
-            _genieCapturedBitmap = null;
-            ShowDockIcon();
-            Opacity = 0;
-            Position = _offscreenParkPos;
-            WindowTaskSwitcher.Configure(this, excluded: true);
-        }
-        else
-        {
-            // Restore taskbar/Alt+Tab presence behind the animation while the real window
-            // is still transparent and parked; the first user click must not change HWND styles.
-            WindowTaskSwitcher.Configure(this, excluded: false);
-            Position = _dockExpandedPos;
-            Opacity = 1;
-        }
-        // 交接期间仍保持动画锁，防止另一轮悬停提前销毁正在绘制的纹理。
-        if (_genieAnimationWindow is { Opacity: > 0 })
-        {
-            await NextFrameAsync(_genieAnimationWindow);
-            await NextFrameAsync(_genieAnimationWindow);
-        }
-        if (generation != _edgeAnimationGeneration || _isClosing) return;
-        CloseGenieAnimationWindow();
-        _isSnapAnimating = false;
-        _isEdgeFinishing = false;
-        QueueForegroundDocumentProbe();
-        UpdateStatusAnimationState(restartActiveClocks: false);
-        if (_isDocked && _isDockRevealed) _edgeHoverTimer.Start();
-        if (hiding && _dockRevealPending)
-        {
-            _dockRevealPending = false;
-            if (GetCursorPos(out var cursor)
-                && new PixelRect(
-                    _dockIconPlacement.Position.X - (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling),
-                    _dockIconPlacement.Position.Y - (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling),
-                    _dockIconPlacement.SizePx + 2 * (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling),
-                    _dockIconPlacement.SizePx + 2 * (int)Math.Ceiling(DockIconWindow.TriggerPaddingDip * _dockScaling))
-                    .Contains(new PixelPoint(cursor.X, cursor.Y)))
-                OnDockIconRevealRequested(this, EventArgs.Empty);
-        }
-        Debug.WriteLine($"Dock animation: {_frameCount} frames; maximum interval {_maxFrameGapMs:F1} ms");
     }
 
     private void OnScreensChanged(object? sender, EventArgs e)
@@ -892,10 +732,11 @@ public partial class MainWindow : Window
         // 不再使用整条边或隐藏窗口感应带，避免误触。
         if (!_isDockRevealed) return;
 
-        var insideWindow = IsPointInsideWindow(cursor, _dockExpandedPos, _dockScaling);
+        var insideWindow = IsPointInsideWindow(cursor, _dockExpandedPos, _dockScaling) || IsPointInsideDockIcon(cursor);
 
         if (insideWindow)
         {
+            InvalidateRetractSnapshot();
             _pointerOutsideDockSince = DateTime.MinValue;
             return;
         }
@@ -903,14 +744,16 @@ public partial class MainWindow : Window
         if (_pointerOutsideDockSince == DateTime.MinValue)
         {
             _pointerOutsideDockSince = DateTime.UtcNow;
+            QueueRetractSnapshot();
             return;
         }
 
+        QueueRetractSnapshot();
         if ((DateTime.UtcNow - _pointerOutsideDockSince).TotalMilliseconds < (DataContext is MainViewModel timingModel ? timingModel.DockRetractDelayMs : 420)) return;
 
         _isDockRevealed = false;
         _pointerOutsideDockSince = DateTime.MinValue;
-        StartEdgeAnimation(_dockHiddenPos, durationMs: 280);
+        StartEdgeAnimation(_dockHiddenPos, DockAnimationMotion.HideDurationMs);
     }
 
     private bool IsPointInsideWindow(NativePoint cursor, PixelPoint expandedPosition, double scaling)
@@ -953,7 +796,7 @@ public partial class MainWindow : Window
     private bool CanReadForegroundDocument()
     {
         if (_isClosing || _isRestoringPlacement || !_placementRestorationCompleted
-            || _isHiddenToTray || _isSnapAnimating || (_isDocked && !_isDockRevealed)
+            || _isHiddenToTray || _isSnapAnimating || _edgeVisualSettling || (_isDocked && !_isDockRevealed)
             || !IsActive || !IsVisible || Opacity <= 0 || WindowState == WindowState.Minimized) return false;
         if (!OperatingSystem.IsWindows()) return true;
         var handle = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
@@ -965,7 +808,12 @@ public partial class MainWindow : Window
         // One queued check per activation, after placement/animation has settled. Never poll or activate the window here.
         Dispatcher.UIThread.Post(async () =>
         {
-            if (_hasProbedCurrentActivation || !CanReadForegroundDocument()
+            if (_hasProbedCurrentActivation || !CanReadForegroundDocument()) return;
+            var activationGeneration = _edgeAnimationGeneration;
+            RootGrid.InvalidateVisual();
+            var painted = await WaitForRenderedBatchAsync(this);
+            if (!painted || activationGeneration != _edgeAnimationGeneration
+                || _hasProbedCurrentActivation || !CanReadForegroundDocument()
                 || DataContext is not MainViewModel vm) return;
             _hasProbedCurrentActivation = true;
             // Also consumes activations during an existing probe/export, so completion cannot cause another probe.
@@ -975,6 +823,7 @@ public partial class MainWindow : Window
 
     private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
     {
+        InvalidateRetractSnapshot();
         if (_isRestoringPlacement || _isHiddenToTray || _isDocked || !_hasRestoredWindowSize || WindowState != WindowState.Normal) return;
         _windowSizeSaveTimer.Stop();
         _windowSizeSaveTimer.Start();
@@ -983,6 +832,7 @@ public partial class MainWindow : Window
     private void OnWindowSizeSaveTimerTick(object? sender, EventArgs e)
     {
         _windowSizeSaveTimer.Stop();
+        if (_isSnapAnimating) return;
         SaveCurrentWindowSize();
     }
 

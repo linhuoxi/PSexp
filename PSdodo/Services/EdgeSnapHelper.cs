@@ -443,8 +443,8 @@ public static class EdgeSnapHelper
     }
 
     /// <summary>
-    /// 计算真正的 macOS 神灯 3D 纹理网格变形 (Skia Non-linear Mesh Warp)。
-    /// 将矩形割裂为 12x12 网格，沿贝塞尔脊柱与错位极化公式生成前窄后宽漏斗及弧形甩尾。
+    /// 二维纹理网格神灯变形：靠近边缘的顶点先收缩，远端延迟跟随。
+    /// dockAnchor / dockSpan 为动画承载窗中的 DIP 坐标；省略时保留边缘狭缝端点。
     /// </summary>
     public static GenieMeshData CalculateGenieMeshData(
         DockEdge edge,
@@ -455,7 +455,9 @@ public static class EdgeSnapHelper
         int cols = 16,
         int rows = 16,
         float peekPx = 12f,
-        GenieMeshData? topology = null)
+        GenieMeshData? topology = null,
+        SKPoint? dockAnchor = null,
+        float? dockSpan = null)
     {
         var clampedCols = Math.Clamp(cols, 4, 32);
         var clampedRows = Math.Clamp(rows, 4, 32);
@@ -493,55 +495,31 @@ public static class EdgeSnapHelper
                     continue;
                 }
 
-                // 根据贴边方向计算极化主轴参数与错位吸入
-                float xPos, yPos;
-                switch (edge)
+                var vertical = edge is DockEdge.Left or DockEdge.Right;
+                var distance = edge switch
                 {
-                    case DockEdge.Left:
-                    {
-                        var pLocal = (float)Math.Clamp((p - u * 0.42) / 0.58, 0.0, 1.0);
-                        var hFactor = 1f - pLocal * 0.88f;
-                        var spineShift = (float)(Math.Sin(u * Math.PI) * pLocal * height * 0.18f);
-                        xPos = (1f - pLocal) * origX + pLocal * peekPx;
-                        yPos = (v - 0.5f) * height * hFactor + height * 0.5f + spineShift;
-                        break;
-                    }
-                    case DockEdge.Right:
-                    {
-                        var distFromRight = 1f - u;
-                        var pLocal = (float)Math.Clamp((p - distFromRight * 0.42) / 0.58, 0.0, 1.0);
-                        var hFactor = 1f - pLocal * 0.88f;
-                        var spineShift = (float)(Math.Sin(distFromRight * Math.PI) * pLocal * height * 0.18f);
-                        xPos = (1f - pLocal) * origX + pLocal * (width - peekPx);
-                        yPos = (v - 0.5f) * height * hFactor + height * 0.5f + spineShift;
-                        break;
-                    }
-                    case DockEdge.Top:
-                    {
-                        var pLocal = (float)Math.Clamp((p - v * 0.42) / 0.58, 0.0, 1.0);
-                        var wFactor = 1f - pLocal * 0.88f;
-                        var spineShift = (float)(Math.Sin(v * Math.PI) * pLocal * width * 0.18f);
-                        yPos = (1f - pLocal) * origY + pLocal * peekPx;
-                        xPos = (u - 0.5f) * width * wFactor + width * 0.5f + spineShift;
-                        break;
-                    }
-                    case DockEdge.Bottom:
-                    {
-                        var distFromBottom = 1f - v;
-                        var pLocal = (float)Math.Clamp((p - distFromBottom * 0.42) / 0.58, 0.0, 1.0);
-                        var wFactor = 1f - pLocal * 0.88f;
-                        var spineShift = (float)(Math.Sin(distFromBottom * Math.PI) * pLocal * width * 0.18f);
-                        yPos = (1f - pLocal) * origY + pLocal * (height - peekPx);
-                        xPos = (u - 0.5f) * width * wFactor + width * 0.5f + spineShift;
-                        break;
-                    }
-                    default:
-                    {
-                        xPos = origX;
-                        yPos = origY;
-                        break;
-                    }
-                }
+                    DockEdge.Left => u,
+                    DockEdge.Right => 1f - u,
+                    DockEdge.Top => v,
+                    DockEdge.Bottom => 1f - v,
+                    _ => 0f
+                };
+                var local = (float)Math.Clamp((p - distance * 0.42) / 0.58, 0, 1);
+                var anchor = dockAnchor ?? (edge switch
+                {
+                    DockEdge.Left => new SKPoint(peekPx, height / 2),
+                    DockEdge.Right => new SKPoint(width - peekPx, height / 2),
+                    DockEdge.Top => new SKPoint(width / 2, peekPx),
+                    _ => new SKPoint(width / 2, height - peekPx)
+                });
+                var crossSize = vertical ? height : width;
+                var span = Math.Clamp(dockSpan ?? crossSize * 0.12f, 0, crossSize);
+                // 脊线只在中途弯曲；终点必须准确落在同一个图标中心，不能留下弯曲残影。
+                var spine = (float)(Math.Sin(distance * Math.PI) * local * (1 - local) * crossSize * 0.22);
+                var targetX = vertical ? anchor.X : anchor.X + (u - 0.5f) * span;
+                var targetY = vertical ? anchor.Y + (v - 0.5f) * span : anchor.Y;
+                var xPos = origX + (targetX - origX) * local + (vertical ? 0 : spine);
+                var yPos = origY + (targetY - origY) * local + (vertical ? spine : 0);
 
                 vertices[index] = new SKPoint(xPos, yPos);
             }

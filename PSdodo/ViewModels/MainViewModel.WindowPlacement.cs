@@ -23,6 +23,14 @@ public partial class MainViewModel
         }
     }
 
+    // 每次动效结束只写一条汇总，避免逐帧磁盘 I/O 本身拖慢 UI。
+    public void LogDockAnimation(string message, bool failure = false)
+        => _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            if (failure) _fileLogger.Warn(message);
+            else _fileLogger.Debug(message);
+        });
+
     public void LogPlacementRestoreFailure(Exception error)
         => AppendLog("Warn", "窗口状态恢复失败，已回到可见窗口：" + error.Message);
 }

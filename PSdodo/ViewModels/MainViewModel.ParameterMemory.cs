@@ -11,14 +11,60 @@ public partial class MainViewModel
     private string _quickImageName = string.Empty;
     private string _layerImagePrefix = string.Empty;
     private DispatcherTimer? _parameterMemoryTimer;
+    private bool _windowAnimationActive;
+    private System.Threading.Tasks.TaskCompletionSource? _windowAnimationIdle;
+    private bool _parameterMemoryDeferred;
+
+    public void SetWindowAnimationActive(bool active)
+    {
+        if (active && !_windowAnimationActive)
+            _windowAnimationIdle = new System.Threading.Tasks.TaskCompletionSource(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+        _windowAnimationActive = active;
+        if (!active)
+        {
+            _windowAnimationIdle?.TrySetResult();
+            _windowAnimationIdle = null;
+        }
+        if (active && _parameterMemoryTimer?.IsEnabled == true)
+        {
+            _parameterMemoryTimer.Stop();
+            _parameterMemoryDeferred = true;
+        }
+        else if (!active && _parameterMemoryDeferred)
+        {
+            QueueParameterMemory();
+        }
+    }
+
+    private async System.Threading.Tasks.Task WaitForWindowAnimationIdleAsync()
+    {
+        // 事件驱动等待；连续反向/下一段动画也必须完成后才应用识别结果，不轮询。
+        while (_windowAnimationActive && _windowAnimationIdle is { } idle)
+            await idle.Task;
+    }
 
     private void QueueParameterMemory()
     {
         if (!_settingsInitialized) return;
+        if (_windowAnimationActive)
+        {
+            _parameterMemoryDeferred = true;
+            return;
+        }
         if (_parameterMemoryTimer is null)
         {
             _parameterMemoryTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-            _parameterMemoryTimer.Tick += (_, _) => FlushParameterMemory();
+            _parameterMemoryTimer.Tick += (_, _) =>
+            {
+                // 即使停止计时器前已有 Tick 排队，也不在动画里落盘。
+                if (_windowAnimationActive)
+                {
+                    _parameterMemoryTimer.Stop();
+                    _parameterMemoryDeferred = true;
+                    return;
+                }
+                FlushParameterMemory();
+            };
         }
         _parameterMemoryTimer.Stop();
         _parameterMemoryTimer.Start();
@@ -26,8 +72,10 @@ public partial class MainViewModel
 
     public void FlushParameterMemory()
     {
-        if (_parameterMemoryTimer?.IsEnabled != true) return;
-        _parameterMemoryTimer.Stop();
+        // 显式关闭/退出时仍可强制补存；动效期间的普通失焦由窗口延后调用。
+        if (_parameterMemoryTimer?.IsEnabled != true && !_parameterMemoryDeferred) return;
+        _parameterMemoryTimer?.Stop();
+        _parameterMemoryDeferred = false;
         SaveBehaviorSettings();
     }
 

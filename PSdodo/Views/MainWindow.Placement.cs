@@ -190,7 +190,7 @@ public partial class MainWindow
         _edgeAnimationGeneration++;
         _isSnapAnimating = false;
         _isEdgeFinishing = false;
-        _dockRevealPending = false;
+        model.SetWindowAnimationActive(false);
         _snapClock.Stop();
         _edgeHoverTimer.Stop();
         Opacity = 0;
@@ -208,7 +208,7 @@ public partial class MainWindow
 
     private void OnWindowMoveFinished()
     {
-        EvaluateAndStartEdgeSnap();
+        if (_isSnapAnimating || EvaluateAndStartEdgeSnap()) return;
         PersistWindowPlacement();
     }
 }

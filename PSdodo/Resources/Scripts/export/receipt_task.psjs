@@ -1,4 +1,4 @@
-// 包装快速/画板脚本，将结果交给软件展示，不创建 Photoshop 提示窗。
+// 快速导出等待同步 saveAs；画板的原生命令只回报“已提交”，由 C# 确认后台文件完成。
 {{SCRIPT_BODY}}
 const taskFs = require("uxp").storage.localFileSystem;
 const taskState = { done: false, success: false, files: [], error: "" };
@@ -9,14 +9,24 @@ try {
     taskState.stage = "执行 Photoshop 导出";
     taskState.path = "{{EXPORT_FOLDER_URL}}";
     await taskFile.write(JSON.stringify(taskState));
-    await runExport();
-    taskState.stage = "读取导出目录";
-    const outputFolder = await taskFs.getEntryWithUrl("{{EXPORT_FOLDER_URL}}");
-    taskState.stage = "枚举导出文件";
-    const entries = await outputFolder.getEntries();
-    taskState.files = entries.filter(entry => entry.isFile && /\.(png|jpg)$/i.test(entry.name)).map(entry => entry.name);
-    if (!taskState.files.length) throw new Error("Photoshop 未生成目标图片");
-    taskState.success = true;
+    const exportResult = await runExport();
+    if ({{WAIT_FOR_BACKGROUND_EXPORT}}) {
+        // batchPlay 返回不代表后台编码/写盘完成；此处不再以一次空枚举判失败。
+        taskState.stage = "命令已提交，等待后台图片写入";
+        taskState.backgroundExport = true;
+        taskState.format = "{{EXPORT_FORMAT}}";
+        taskState.expectedFileCount = exportResult && exportResult.expectedFileCount > 0
+            ? exportResult.expectedFileCount : {{EXPECTED_FILE_COUNT}};
+        taskState.success = true;
+    } else {
+        taskState.stage = "读取导出目录";
+        const outputFolder = await taskFs.getEntryWithUrl("{{EXPORT_FOLDER_URL}}");
+        taskState.stage = "枚举导出文件";
+        const entries = await outputFolder.getEntries();
+        taskState.files = entries.filter(entry => entry.isFile && /\.(png|jpg)$/i.test(entry.name)).map(entry => entry.name);
+        if (!taskState.files.length) throw new Error("Photoshop 未生成目标图片");
+        taskState.success = true;
+    }
 } catch (error) {
     taskState.error = taskState.stage + " [" + taskState.path + "]：" + String(error);
     taskState.stack = error && error.stack ? String(error.stack) : "";

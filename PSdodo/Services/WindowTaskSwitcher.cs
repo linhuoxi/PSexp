@@ -15,6 +15,13 @@ internal static class WindowTaskSwitcher
         SetWindowLongPtr(handle.Handle,-20,new IntPtr(style));
         SetWindowPos(handle.Handle,IntPtr.Zero,0,0,0,0,0x0001|0x0002|0x0004|0x0010|0x0020);
     }
+    internal static void RaiseWithoutActivation(Window window)
+    {
+        if (!OperatingSystem.IsWindows() || window.TryGetPlatformHandle() is not { } handle) return;
+        // HWND_TOPMOST，保持位置/尺寸，不激活、不改所有者层级；只在准备交接时调用。
+        SetWindowPos(handle.Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0200);
+    }
+
     [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr hwnd,int index,IntPtr value);
     [DllImport("user32.dll",EntryPoint="SetWindowPos")] private static extern bool SetWindowPos(IntPtr hwnd,IntPtr after,int x,int y,int width,int height,uint flags);

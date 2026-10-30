@@ -11,6 +11,20 @@ async function exportSelectedArtboards() {
     // PNG 固定用 32（与原版"选择画板导出PNG.js"一致）
     if (format === "png") quality = 32;
 
+    // 在命令提交前读取本次活动文档/选择的数量，避免依赖过时的界面计数。
+    let expectedFileCount = null;
+    try {
+        const layers = Array.from(app.activeDocument.activeLayers);
+        if (layers.length) {
+            const descriptors = await batchPlay(layers.map(layer => ({
+                _obj: "get", _target: [{ _ref: "layer", _id: layer.id }],
+                _options: { dialogOptions: "dontDisplay" }
+            })), {});
+            if (descriptors.length === layers.length && descriptors.every(item => item._obj !== "error"))
+                expectedFileCount = (descriptors.every(item => item.artboardEnabled === true) ? descriptors.length : null);
+        }
+    } catch (_) { /* 读取数量失败时使用应用预期数或文件稳定性判断，不改用户选择。 */ }
+
     const d = {
         _options: { dialogOptions: "dontDisplay" },
         _obj: "exportSelectionAsFileTypePressed",
@@ -27,9 +41,12 @@ async function exportSelectedArtboards() {
 
     const result = await batchPlay([d], {});
     if (result.some(item => item._obj === "error")) throw new Error(result.find(item => item._obj === "error").message || "Photoshop 导出失败");
+    return { expectedFileCount };
 }
 
 async function runExport() {
     if (app.documents.length === 0) throw new Error("没有打开的文档");
-    await core.executeAsModal(exportSelectedArtboards, { commandName: "Export Selection" });
+    let exportResult = null;
+    await core.executeAsModal(async () => { exportResult = await exportSelectedArtboards(); }, { commandName: "Export Selection" });
+    return exportResult;
 }

@@ -33,6 +33,7 @@ internal sealed class DockDesktopIntegration : IDisposable
 
     internal void SetActive(bool active)
     {
+        if (_active == active) return;
         _active = active;
         if (!active)
         {

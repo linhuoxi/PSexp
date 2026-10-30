@@ -238,14 +238,19 @@ public sealed class ExportService : IExportService
         var script = ScriptParameterInjector.Inject(template, args);
         _logger.Info($"[task={taskId}] 输出目录={s.ExportPath} exists={Directory.Exists(s.ExportPath)}；回执目录={taskDirectory}");
         _logger.Debug($"[task={taskId}] 注入参数={System.Text.Json.JsonSerializer.Serialize(args.Where(pair => pair.Key != "SCRIPT_BODY").ToDictionary(pair => pair.Key, pair => pair.Value))}；脚本SHA256={Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(script)))}");
+        var backgroundSnapshot = args.GetValueOrDefault("WAIT_FOR_BACKGROUND_EXPORT") == "true"
+            ? ExportFileWatcher.CaptureSnapshot(s.ExportPath, s.Format.ToExtension()) : null;
         var dispatched = await _uxpBridge.ExecuteAsync(script, ct);
         _logger.Info($"[task={taskId}] 脚本启动 success={dispatched.Success} path={dispatched.TempFilePath}");
         if (dispatched.Error is not null) _logger.Error($"[task={taskId}] 脚本启动异常：{dispatched.Error}");
         if (!dispatched.Success) return PsBridgeResult.Failed(dispatched.Error ?? new IOException("UXP 脚本启动失败"));
         var result = await UxpTaskWatcher.WaitForCompletionAsync(
             Path.Combine(taskDirectory, "result.json"), s.ExportPath,
-            (name, count) => onProgress?.Invoke(name, count), ct);
+            (name, count) => onProgress?.Invoke(name, count), ct,
+            backgroundSnapshot: backgroundSnapshot, expectedFileCount: s.ExpectedFileCount);
         _logger.Info($"[task={taskId}] 回执={result.ReturnValue}");
+        if (backgroundSnapshot is not null)
+            _logger.Info($"[task={taskId}] 后台图片写入确认 success={result.Success} count={result.ExportedCount} files={System.Text.Json.JsonSerializer.Serialize(result.OutputFiles)}");
         if (result.Success && !string.IsNullOrEmpty(result.ReturnValue))
         {
             await _uxpBridge.CleanupTempFileAsync(dispatched.TempFilePath);
@@ -467,7 +472,13 @@ public sealed class ExportService : IExportService
     {
         var body = ScriptParameterInjector.Inject(ScriptLibrary.GetScript(scriptName), args);
         return ExecuteReceiptTaskAsync(ScriptLibrary.GetScript("export/receipt_task"),
-            new Dictionary<string, string> { ["SCRIPT_BODY"] = body }, s, onProgress, ct);
+            new Dictionary<string, string>
+            {
+                ["SCRIPT_BODY"] = body,
+                ["WAIT_FOR_BACKGROUND_EXPORT"] = scriptName is ScriptNames.ExportAllArtboards or ScriptNames.ExportSelectedArtboards ? "true" : "false",
+                ["EXPORT_FORMAT"] = s.Format.ToScriptString(),
+                ["EXPECTED_FILE_COUNT"] = Math.Max(0, s.ExpectedFileCount ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            }, s, onProgress, ct);
     }
 
     public static int ResolveScriptQuality(ExportSettings settings)

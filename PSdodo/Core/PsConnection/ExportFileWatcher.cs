@@ -49,7 +49,9 @@ public static class ExportFileWatcher
         int? expectedFileCount = null,
         int timeoutMs = DefaultTimeoutMs,
         Action<string, int>? onProgress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool requireCompletedImages = false,
+        int firstChangeTimeoutMs = FirstChangeTimeoutMs)
     {
         if (string.IsNullOrWhiteSpace(exportPath) || !Directory.Exists(exportPath))
             return new ExportFileChangeResult { TimedOut = true };
@@ -57,6 +59,7 @@ public static class ExportFileWatcher
         var stopwatch = Stopwatch.StartNew();
         var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         IReadOnlyDictionary<string, ExportFileStamp> lastChanged = EmptySnapshot;
+        IReadOnlyDictionary<string, ExportFileStamp> lastObserved = EmptySnapshot;
         var stableMs = 0;
 
         while (stopwatch.ElapsedMilliseconds < timeoutMs)
@@ -64,14 +67,15 @@ public static class ExportFileWatcher
             await Task.Delay(PollIntervalMs, ct);
             ct.ThrowIfCancellationRequested();
 
-            var current = ReadSnapshot(exportPath, extension);
+            var current = ReadSnapshot(exportPath, extension, requireCompletedImages);
             var changed = current
                 .Where(pair => !before.Files.TryGetValue(pair.Key, out var oldStamp) || oldStamp != pair.Value)
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            lastObserved = changed;
 
             if (changed.Count == 0)
             {
-                if (reported.Count == 0 && stopwatch.ElapsedMilliseconds >= FirstChangeTimeoutMs)
+                if (reported.Count == 0 && stopwatch.ElapsedMilliseconds >= firstChangeTimeoutMs)
                     return new ExportFileChangeResult { TimedOut = true };
 
                 stableMs = 0;
@@ -89,12 +93,12 @@ public static class ExportFileWatcher
             {
                 stableMs += PollIntervalMs;
                 var reachedExpectedCount =
-                    expectedFileCount is null || reported.Count >= expectedFileCount.Value;
+                    expectedFileCount is null || changed.Count >= expectedFileCount.Value;
                 if (stableMs >= StablePeriodMs && reachedExpectedCount)
                 {
                     return new ExportFileChangeResult
                     {
-                        Files = reported.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray()
+                        Files = changed.Keys.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray()
                     };
                 }
             }
@@ -107,12 +111,12 @@ public static class ExportFileWatcher
 
         return new ExportFileChangeResult
         {
-            Files = reported.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
+            Files = lastObserved.Keys.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
             TimedOut = true
         };
     }
 
-    private static IReadOnlyDictionary<string, ExportFileStamp> ReadSnapshot(string exportPath, string extension)
+    private static IReadOnlyDictionary<string, ExportFileStamp> ReadSnapshot(string exportPath, string extension, bool requireCompletedImages = false)
     {
         if (string.IsNullOrWhiteSpace(exportPath) || !Directory.Exists(exportPath))
             return EmptySnapshot;
@@ -126,6 +130,7 @@ public static class ExportFileWatcher
                 try
                 {
                     var file = new FileInfo(path);
+                    if (requireCompletedImages && !HasCompleteImageEnvelope(path, extension)) continue;
                     result[file.FullName] = new ExportFileStamp(file.Length, file.LastWriteTimeUtc.Ticks);
                 }
                 catch (IOException)
@@ -147,6 +152,30 @@ public static class ExportFileWatcher
         {
             return EmptySnapshot;
         }
+    }
+
+    private static bool HasCompleteImageEnvelope(string path, string extension)
+    {
+        // FileShare.Read 拒绝与写入句柄并存；只读少量首尾字节，不解码整张大图。
+        using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (extension.TrimStart('.').Equals("jpg", StringComparison.OrdinalIgnoreCase))
+        {
+            if (input.Length < 4) return false;
+            Span<byte> signature = stackalloc byte[2];
+            input.ReadExactly(signature);
+            if (signature[0] != 0xff || signature[1] != 0xd8) return false;
+            input.Seek(-2, SeekOrigin.End);
+            input.ReadExactly(signature);
+            return signature[0] == 0xff && signature[1] == 0xd9;
+        }
+        if (input.Length < 53) return false;
+        Span<byte> header = stackalloc byte[8];
+        Span<byte> footer = stackalloc byte[12];
+        input.ReadExactly(header);
+        input.Seek(-12, SeekOrigin.End);
+        input.ReadExactly(footer);
+        return header.SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })
+            && footer.SequenceEqual(new byte[] { 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130 });
     }
 
     private static bool SnapshotsEqual(

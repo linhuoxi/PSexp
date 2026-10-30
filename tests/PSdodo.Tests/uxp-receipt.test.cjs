@@ -11,7 +11,11 @@ const wrapper = fs.readFileSync(path.join(root, 'receipt_task.psjs'), 'utf8');
             const reports = [];
             const args = { EXPORT_PATH: 'C:/output/', FORMAT: 'png', QUALITY: '32', RENAME: 'true' };
             const body = fs.readFileSync(path.join(root, mode + '.psjs'), 'utf8').replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => args[key]);
-            const script = wrapper.replace('{{SCRIPT_BODY}}', body).replace('{{RESULT_FOLDER_URL}}', 'file:/task').replace('{{EXPORT_FOLDER_URL}}', 'file:/output');
+            const background = mode !== 'quick_export';
+            const script = wrapper.replace('{{SCRIPT_BODY}}', body)
+                .replace('{{RESULT_FOLDER_URL}}', 'file:/task').replace('{{EXPORT_FOLDER_URL}}', 'file:/output')
+                .replace('{{WAIT_FOR_BACKGROUND_EXPORT}}', String(background))
+                .replace('{{EXPORT_FORMAT}}', 'png').replace('{{EXPECTED_FILE_COUNT}}', '0');
             const ps = {
                 app: { documents: scenario === 'no document' ? [] : [{}], activeDocument: {
                     name: 'output.psd', saveAs: { async png() {
@@ -31,8 +35,16 @@ const wrapper = fs.readFileSync(path.join(root, 'receipt_task.psjs'), 'utf8');
             await new vm.Script('(async()=>{' + script + '})()').runInNewContext({ require(name) { return name === 'photoshop' ? ps : uxp; } });
             const result = reports.at(-1);
             assert.equal(result.done, true);
-            assert.equal(result.success, scenario === 'success');
-            if (scenario !== 'success') {
+            // 原生画板的空目录仅代表后台尚未写入，由 C# 等待并确认完整文件。
+            const accepted = scenario === 'success' || (background && scenario === 'no output');
+            assert.equal(result.success, accepted);
+            if (background && accepted) {
+                assert.equal(result.backgroundExport, true);
+                assert.equal(result.format, 'png');
+                assert.equal(result.files.length, 0);
+                assert.equal(result.expectedFileCount, 0);
+            }
+            if (!accepted) {
                 assert.ok(result.error.length > 0);
                 assert.ok(result.stage.length > 0);
                 assert.equal(result.path, 'file:/output');

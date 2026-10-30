@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -71,13 +72,27 @@ public sealed class GenieAnimationWindow : Window
     public void SetMesh(EdgeSnapHelper.GenieMeshData meshData)
         => _surface.MeshData = meshData;
 
-    public void Park(PixelPoint position)
+    internal void SetContentOpacity(double opacity)
+        => _surface.MeshOpacity = Math.Clamp(opacity, 0, 1);
+
+    internal async Task<bool> WaitForFirstDrawAsync()
+    {
+        var ready = _surface.WaitForDrawAsync();
+        return await Task.WhenAny(ready, Task.Delay(100)) == ready && await ready;
+    }
+
+    internal void BeginFrameTiming() => _surface.BeginFrameTiming();
+    internal string FrameTimingSummary => _surface.FrameTimingSummary;
+
+    public void Park(PixelPoint position, bool retainTexture = false)
     {
         Opacity = 0.0;
         Position = position;
-        _surface.Bitmap = null;
+        _surface.CancelPendingDraw();
         _surface.MeshData = null;
-        Hide(); // 停车的承载窗真正隐藏，不保留 Alt+Tab 缩略图或后台绘制。
+        if (!retainTexture) _surface.Bitmap = null;
+        // 保留已创建的透明工具窗，避免 Hide/Show 反复重建呈现路径。
+        // Opacity=0、停放屏外、无任务栏入口；没有逐帧请求时不持续绘制。
     }
 
     private void DisableDwmShadow()

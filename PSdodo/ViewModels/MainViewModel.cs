@@ -510,6 +510,8 @@ public partial class MainViewModel : ViewModelBase
             var (doc, probeResult) = quiet
                 ? await _ps.ProbeDocumentInfoQuietlyAsync()
                 : await _ps.ProbeDocumentInfoAsync();
+            // 已发出的自动 COM 读取无需强制中断，但结果不能在神灯动画中途改动界面。
+            if (quiet) await WaitForWindowAnimationIdleAsync();
             // 把脚本端日志透传到 UI 日志面板
             foreach (var log in probeResult.Logs)
                 AppendLog(log.Level.ToString(), log.Message);
