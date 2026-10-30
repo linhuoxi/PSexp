@@ -1,0 +1,53 @@
+// Read-only document probe for hosts whose COM automation is unavailable.
+const { app, action } = require("photoshop");
+const fs = require("uxp").storage.localFileSystem;
+const state = { done: false, success: false, document: null, warnings: [], error: "" };
+const folder = await fs.getEntryWithUrl("{{RESULT_FOLDER_URL}}");
+const receipt = await folder.createFile("document.json", { overwrite: true });
+await receipt.write(JSON.stringify(state));
+try {
+    const info = { name: "", path: "", width: 0, height: 0, hasArtboards: false, artboardCount: 0, hasSlices: false };
+    if (app.documents.length) {
+        const doc = app.activeDocument;
+        const id = doc.id;
+        info.name = doc.name;
+        info.width = Math.round(doc.width);
+        info.height = Math.round(doc.height);
+        try { info.path = String(doc.path || ""); } catch (_) { /* unsaved */ }
+        try {
+            const groups = [];
+            function visit(layers) {
+                for (const layer of layers) {
+                    const children = layer.layers ? Array.from(layer.layers) : [];
+                    if (children.length || layer.kind === "group") groups.push(layer.id);
+                    visit(children);
+                }
+            }
+            visit(Array.from(doc.layers));
+            for (let offset = 0; offset < groups.length; offset += 64) {
+                const descriptors = await action.batchPlay(groups.slice(offset, offset + 64).map(layerId => ({
+                    _obj: "get", _target: [{ _ref: "layer", _id: layerId }],
+                    _options: { dialogOptions: "dontDisplay" }
+                })), {});
+                info.artboardCount += descriptors.filter(item => item.artboardEnabled === true).length;
+                if (descriptors.some(item => item._obj === "error")) state.warnings.push("部分画板属性读取失败");
+            }
+            info.hasArtboards = info.artboardCount > 0;
+        } catch (error) { state.warnings.push("画板识别失败：" + String(error)); }
+        try {
+            const result = await action.batchPlay([{
+                _obj: "get", _target: [{ _property: "slices" }, { _ref: "document", _id: id }],
+                _options: { dialogOptions: "dontDisplay" }
+            }], {});
+            if (result.some(item => item._obj === "error")) throw new Error(result[0].message || "无法读取切片");
+            const slices = result[0].slices && result[0].slices.slices || [];
+            info.hasSlices = slices.some(slice => slice.origin && ["userGenerated", "layerGenerated"].includes(slice.origin._value)
+                && (!slice.type || slice.type._value === "image") && slice.bounds
+                && slice.bounds.right > slice.bounds.left && slice.bounds.bottom > slice.bounds.top);
+        } catch (error) { state.warnings.push("切片识别失败：" + String(error)); }
+        if (!app.documents.length || app.activeDocument.id !== id) throw new Error("读取过程中切换了文档，请重新刷新");
+    }
+    state.document = info;
+    state.success = true;
+} catch (error) { state.error = String(error); state.stack = error && error.stack ? String(error.stack) : ""; }
+finally { state.done = true; await receipt.write(JSON.stringify(state)); }

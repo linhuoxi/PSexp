@@ -46,6 +46,7 @@ public partial class MainViewModel : ViewModelBase
         _format = s.DefaultFormat;
         Quality = s.DefaultQuality;
         AutoRename = s.DefaultAutoRename;
+        FileName = s.SliceFilePrefix ?? string.Empty;
         LayerExportWithDocName = s.LayerExportWithDocName;
         LayerExportRecursive = s.LayerExportRecursive;
         LayerExportSelectedOnly = s.LayerExportSelectedOnly;
@@ -179,7 +180,7 @@ public partial class MainViewModel : ViewModelBase
     private bool _autoRename = true;
 
     [ObservableProperty]
-    private string _fileName = "export";
+    private string _fileName = string.Empty;
 
     /// <summary>图片命名（通用前缀，支持所有导出模式）</summary>
     [ObservableProperty]
@@ -267,11 +268,15 @@ public partial class MainViewModel : ViewModelBase
         _ => string.Empty
     };
 
-    public string DocumentDisplayName => FormatDocumentDisplayName(IsPsRunning, HasDocument, DocumentName);
+    public string DocumentDisplayName => IsPsRunning && !string.IsNullOrEmpty(DocumentProbeError)
+        ? "无法读取 Photoshop 文档"
+        : IsPsRunning && IsRefreshingStatus && !HasDocument ? "正在识别 Photoshop 文档…"
+        : FormatDocumentDisplayName(IsPsRunning, HasDocument, DocumentName);
 
     public string PsVersionDisplay => FormatPsVersionDisplay(IsPsRunning, PsVersion);
 
-    public string DocumentSizeDisplay => FormatDocumentSizeDisplay(HasDocument, DocumentSize);
+    public string DocumentSizeDisplay => !string.IsNullOrEmpty(DocumentProbeError)
+        ? "文档状态读取失败" : FormatDocumentSizeDisplay(HasDocument, DocumentSize);
 
     public static string FormatDocumentDisplayName(bool isPsRunning, bool hasDocument, string documentName)
         => !isPsRunning
@@ -292,6 +297,7 @@ public partial class MainViewModel : ViewModelBase
         {
             if (IsExporting) return IsCancelling ? "正在停止当前任务..." : ExportStatusText;
             if (!IsPsRunning) return "请先打开 Photoshop";
+            if (!string.IsNullOrEmpty(DocumentProbeError)) return "无法读取文档，请刷新并查看日志";
             if (!IsBridgeAvailable) return "Photoshop 连接不可用";
             if (!HasDocument) return "请在 Photoshop 中打开一个文档";
             if (!HasExportTarget) return DestinationHint;
@@ -299,8 +305,6 @@ public partial class MainViewModel : ViewModelBase
                 return "当前文档没有画板";
             if (SelectedMode == ExportMode.Slices && !HasSlices)
                 return "当前文档没有可用切片";
-            if (SelectedMode == ExportMode.Slices && string.IsNullOrWhiteSpace(FileName))
-                return "请填写切片文件名前缀";
             return "准备就绪";
         }
     }
@@ -396,7 +400,7 @@ public partial class MainViewModel : ViewModelBase
         HasDocument &&
         HasExportTarget &&
         (SelectedMode is not (ExportMode.AllArtboards or ExportMode.SelectedArtboards) || HasArtboards) &&
-        (SelectedMode != ExportMode.Slices || (HasSlices && !string.IsNullOrWhiteSpace(FileName)));
+        (SelectedMode != ExportMode.Slices || HasSlices);
 
     // 上一次文档状态（用于检测变化，避免日志刷屏）
     private bool _lastHasDocument = false;
@@ -404,6 +408,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsRefreshingStatusChanged(bool value)
     {
+        OnPropertyChanged(nameof(DocumentDisplayName));
         OnPropertyChanged(nameof(CanRefreshStatus));
         RefreshStatusCommand.NotifyCanExecuteChanged();
     }
@@ -448,6 +453,32 @@ public partial class MainViewModel : ViewModelBase
         _lastDocName = string.Empty;
     }
 
+    [ObservableProperty] private string _documentProbeError = string.Empty;
+    private DateTime _lastProbeErrorLoggedUtc;
+    private string _lastProbeErrorLogged = string.Empty;
+
+    partial void OnDocumentProbeErrorChanged(string value)
+    {
+        OnPropertyChanged(nameof(DocumentDisplayName));
+        OnPropertyChanged(nameof(DocumentSizeDisplay));
+        OnPropertyChanged(nameof(ReadinessText));
+    }
+
+    private void RecordDocumentProbeFailure(Exception? error)
+    {
+        ResetDocumentState();
+        DocumentProbeError = error?.Message ?? "未知识别错误";
+        ExportStatusText = "文档识别失败，请刷新；详情见日志";
+        if (_lastProbeErrorLogged != DocumentProbeError || (DateTime.UtcNow - _lastProbeErrorLoggedUtc).TotalSeconds >= 30)
+        {
+            _lastProbeErrorLogged = DocumentProbeError;
+            _lastProbeErrorLoggedUtc = DateTime.UtcNow;
+            AppendLog("Error", "文档探测失败：" + DocumentProbeError);
+            AppendLog("Debug", "文档探测完整异常：" + error);
+        }
+        RefreshCanExecute();
+    }
+
     // ---------- 状态机：自动探测 ----------
     private async Task RefreshStatusAsync(bool silent)
     {
@@ -463,6 +494,7 @@ public partial class MainViewModel : ViewModelBase
 
             if (!IsPsRunning || !IsBridgeAvailable)
             {
+                DocumentProbeError = string.Empty;
                 ResetDocumentState();
                 RefreshCanExecute();
                 return;
@@ -474,11 +506,13 @@ public partial class MainViewModel : ViewModelBase
                 AppendLog(log.Level.ToString(), log.Message);
             if (!probeResult.Success)
             {
-                AppendLog("Error", "文档探测失败: " + (probeResult.Error?.Message ?? "未知错误"));
-                ResetDocumentState();
-                RefreshCanExecute();
+                RecordDocumentProbeFailure(probeResult.Error);
                 return;
             }
+            if (!string.IsNullOrEmpty(DocumentProbeError) && ExportStatusText == "文档识别失败，请刷新；详情见日志")
+                ExportStatusText = doc.IsOpen ? "文档识别已恢复，可以导出" : "当前没有打开文档";
+            DocumentProbeError = string.Empty;
+            _lastProbeErrorLogged = string.Empty;
             if (!doc.IsOpen)
             {
                 ResetDocumentState();
@@ -511,7 +545,7 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            if (!silent) AppendLog("Error", "状态探测失败: " + ex.Message);
+            RecordDocumentProbeFailure(ex);
         }
         finally
         {
@@ -531,7 +565,7 @@ public partial class MainViewModel : ViewModelBase
     {
         var suppress = _suppressNextActivationRefresh;
         _suppressNextActivationRefresh = false;
-        if (!CanRefreshOnActivation(
+        if (!_ps.SupportsBackgroundIdentityProbe || !CanRefreshOnActivation(
                 AutoRefreshOnActivated,
                 IsBusy,
                 IsRefreshingStatus,
@@ -550,17 +584,29 @@ public partial class MainViewModel : ViewModelBase
         _documentSyncInProgress = true;
         try
         {
+            if (!_ps.SupportsBackgroundIdentityProbe)
+            {
+                // Photoshop is already foreground; UXP dispatch must not activate it from another app.
+                // One in-flight refresh covers the configured timer interval, including slow hosts.
+                await RefreshStatusAsync(silent: true);
+                return;
+            }
             var identity = await _ps.ExecuteScriptAsync("probe/document_identity", new Dictionary<string,string>());
-            if (!identity.Success || IsBusy || IsRefreshingStatus) return;
-            if (_autoDocumentKey != identity.ReturnValue)
+            if (IsBusy || IsRefreshingStatus) return;
+            if (!identity.Success)
+            {
+                RecordDocumentProbeFailure(identity.Error);
+                return;
+            }
+            if (_autoDocumentKey != identity.ReturnValue || !string.IsNullOrEmpty(DocumentProbeError))
             {
                 await RefreshStatusAsync(silent: true);
-                if ((identity.ReturnValue == "none" && !HasDocument)
-                    || (HasDocument && identity.ReturnValue.EndsWith("|" + DocumentName, StringComparison.Ordinal)))
+                if (string.IsNullOrEmpty(DocumentProbeError) && ((identity.ReturnValue == "none" && !HasDocument)
+                    || (HasDocument && identity.ReturnValue.EndsWith("|" + DocumentName, StringComparison.Ordinal))))
                     _autoDocumentKey = identity.ReturnValue;
             }
         }
-        catch { /* Photoshop 的模态操作期间稍后再同步，不弹窗或抢焦点。 */ }
+        catch (Exception error) { RecordDocumentProbeFailure(error); }
         finally { _documentSyncInProgress = false; }
     }
 
@@ -645,6 +691,7 @@ public partial class MainViewModel : ViewModelBase
             DefaultFormat = useCurrentExportValues ? Format : current.DefaultFormat,
             DefaultQuality = useCurrentExportValues ? Quality : current.DefaultQuality,
             DefaultAutoRename = AutoRename,
+            SliceFilePrefix = FileName,
             PhotoshopExePath = current.PhotoshopExePath,
             PollingIntervalMs = current.PollingIntervalMs,
             LayerExportWithDocName = LayerExportWithDocName,
@@ -759,7 +806,6 @@ public partial class MainViewModel : ViewModelBase
                 await RunExportAsync(ct => _export.ExportLayersAsync(exportSettings, OnExportProgress, ct), "图层导出", _exportCts.Token);
                 break;
             case ExportMode.Slices:
-                if (string.IsNullOrWhiteSpace(FileName)) { AppendLog("Warn", "请填写切片文件名前缀"); return; }
                 await RunExportAsync(ct => _export.ExportSlicesAsync(exportSettings, OnExportProgress, ct), "切片导出", _exportCts.Token);
                 break;
         }
@@ -945,7 +991,11 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnExportPathChanged(string value) => NotifyExportDestinationChanged();
 
-    partial void OnFileNameChanged(string value) => RefreshCanExecute();
+    partial void OnFileNameChanged(string value)
+    {
+        RefreshCanExecute();
+        SaveBehaviorSettings();
+    }
 
     partial void OnIsExportingChanged(bool value)
     {

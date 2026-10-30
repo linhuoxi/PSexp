@@ -21,6 +21,9 @@ public sealed class AppSettings
 
     public bool DefaultAutoRename { get; set; } = true;
 
+    /// <summary>切片文件名前缀，可为空；清空后仍持久保存为空。</summary>
+    public string SliceFilePrefix { get; set; } = string.Empty;
+
     public string? PhotoshopExePath { get; set; }
 
     /// <summary>文档状态轮询间隔（毫秒）</summary>

@@ -23,7 +23,7 @@ public sealed class ExportSettings
     public bool AutoRename { get; set; } = true;
 
     /// <summary>切片导出时的文件名前缀</summary>
-    public string FileName { get; set; } = "export";
+    public string FileName { get; set; } = string.Empty;
 
     /// <summary>快速导出的完整图片名，或图层导出的文件名前缀</summary>
     public string ImageName { get; set; } = string.Empty;

@@ -62,7 +62,8 @@ async function exportSlices(context) {
         for (let index = 0; index < slices.length; index++) {
             if (context.isCancelled) throw new Error("Photoshop 已取消切片导出");
             const slice = slices[index];
-            const stem = safeName(fileName) + "_" + (slice.name ? safeName(slice.name) : String(index + 1).padStart(2, "0"));
+            const prefix = fileName.trim() ? safeName(fileName.trim()) + "_" : "";
+            const stem = prefix + (slice.name ? safeName(slice.name) : String(index + 1).padStart(2, "0"));
             let name = stem + "." + format;
             if (rename) {
                 let suffix = 1;

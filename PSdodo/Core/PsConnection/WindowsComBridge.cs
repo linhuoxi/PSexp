@@ -16,7 +16,6 @@ namespace PsExporter.Core.PsConnection;
 /// </summary>
 public sealed class WindowsComBridge : IPsBridge
 {
-    private const string ProgId = "Photoshop.Application";
 
     public bool IsAvailable => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
@@ -34,14 +33,11 @@ public sealed class WindowsComBridge : IPsBridge
     {
         var wrapped = WrapScript(script, logFilePath);
         dynamic? ps = null;
+        var connectionLogs = new List<PsLogEntry>();
         try
         {
-            var type = Type.GetTypeFromProgID(ProgId);
-            if (type is null)
-                throw new PsNotConnectedException("找不到 Photoshop.Application COM 对象，Photoshop 可能未安装或未启动");
-
-            ps = Activator.CreateInstance(type)
-                ?? throw new PsNotConnectedException("无法创建 Photoshop COM 实例");
+            ps = RunningPhotoshopConnection.Attach(out var connection);
+            connectionLogs.Add(new PsLogEntry { Level = PsLogLevel.Debug, Message = connection });
 
             object? returnValue;
             try
@@ -55,7 +51,7 @@ public sealed class WindowsComBridge : IPsBridge
             }
 
             var retStr = returnValue?.ToString() ?? string.Empty;
-            var logs = ReadLogs(logFilePath);
+            var logs = connectionLogs.Concat(ReadLogs(logFilePath)).ToArray();
             var hasScriptResult = TryReadScriptResult(
                 retStr,
                 out var scriptSucceeded,
@@ -76,10 +72,6 @@ public sealed class WindowsComBridge : IPsBridge
                 ExportedCount = exportedCount
             };
         }
-        catch (PsNotConnectedException)
-        {
-            throw;
-        }
         catch (Exception ex)
         {
             return new PsBridgeResult
@@ -87,7 +79,7 @@ public sealed class WindowsComBridge : IPsBridge
                 Success = false,
                 Error = ex,
                 ReturnValue = string.Empty,
-                Logs = ReadLogsSafe(logFilePath)
+                Logs = connectionLogs.Concat(ReadLogsSafe(logFilePath)).ToArray()
             };
         }
         finally

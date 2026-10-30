@@ -14,6 +14,7 @@ namespace PsExporter.Services;
 public interface IPhotoshopService
 {
     bool IsBridgeAvailable { get; }
+    bool SupportsBackgroundIdentityProbe => true;
     PhotoshopProcessInfo DetectProcess();
     Task<bool> TryLaunchAsync(string? explicitPath, CancellationToken ct = default);
 

@@ -9,15 +9,17 @@ using PsExporter.Models;
 
 namespace PsExporter.Services;
 
-public sealed class PhotoshopService : IPhotoshopService
+public sealed partial class PhotoshopService : IPhotoshopService
 {
     private readonly IPsBridge _bridge;
     private readonly IPhotoshopDetector _detector;
 
-    public PhotoshopService(IPsBridge bridge, IPhotoshopDetector detector)
+    public PhotoshopService(IPsBridge bridge, IPhotoshopDetector detector, UxpScriptBridge? probeUxpBridge = null, PsExporter.Core.Logging.FileLogger? probeLogger = null)
     {
         _bridge = bridge;
         _detector = detector;
+        _probeUxpBridge = probeUxpBridge;
+        _probeLogger = probeLogger;
     }
 
     public bool IsBridgeAvailable => _bridge.IsAvailable;
@@ -35,10 +37,22 @@ public sealed class PhotoshopService : IPhotoshopService
 
     public async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoAsync(CancellationToken ct = default)
     {
+        if (_useUxpProbe) return await ProbeWithUxpAsync(ct);
         var res = await ExecuteScriptAsync(ScriptNames.ProbeDocumentInfo, EmptyArgs, ct);
         if (!res.Success)
-            return (PsDocumentInfo.Empty, res);
-        var doc = PsDocumentInfo.Parse(res.ReturnValue) ?? PsDocumentInfo.Empty;
+        {
+            if (_probeUxpBridge is null) return (PsDocumentInfo.Empty, res);
+            _useUxpProbe = true;
+            _probeLogger?.Warn("COM 文档识别不可用，改用 UXP：" + res.Error);
+            return await ProbeWithUxpAsync(ct);
+        }
+        var doc = PsDocumentInfo.Parse(res.ReturnValue);
+        if (doc is null)
+            return (PsDocumentInfo.Empty, new PsBridgeResult
+            {
+                Success = false, ReturnValue = res.ReturnValue, Logs = res.Logs,
+                Error = new InvalidDataException("Photoshop 文档探测返回了无效数据，不能据此判定没有文档")
+            });
         return (doc, res);
     }
 

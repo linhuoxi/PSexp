@@ -24,6 +24,8 @@ public sealed class PsDocumentInfo
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("name", out var name)
+                || name.ValueKind != JsonValueKind.String) return null;
             return new PsDocumentInfo
             {
                 Name = root.TryGetProperty("name", out var n) ? n.GetString() ?? string.Empty : string.Empty,

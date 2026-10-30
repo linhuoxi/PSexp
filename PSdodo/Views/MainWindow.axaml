@@ -644,7 +644,7 @@
                                                 <TextBlock Grid.Column="0" Text="文件前缀" Classes="label"/>
                                                 <controls:ContinuousBorder Grid.Column="1"  Classes="input-shell" Height="{StaticResource Control.InputHeight}" CornerRadius="{StaticResource Radius.Sm}" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"><TextBox Background="Transparent" BorderThickness="0" 
                                                          Text="{Binding FileName}"
-                                                         PlaceholderText="例如：商品主图"
+                                                         PlaceholderText="可留空，使用切片名称或序号"
                                                          VerticalContentAlignment="Center"
                                                          Padding="10,0"/></controls:ContinuousBorder>
                                             </Grid>
