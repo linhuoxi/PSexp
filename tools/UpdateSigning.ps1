@@ -5,7 +5,12 @@ function Get-PSexpSigningKeyPath {
     if (-not [string]::IsNullOrWhiteSpace($env:PSexpSigningKeyFile)) {
         return [IO.Path]::GetFullPath($env:PSexpSigningKeyFile)
     }
-    return Join-Path $env:LOCALAPPDATA 'PSexp\ReleaseSigning\update-key.dpapi'
+    # Resolve the Windows known folder, not a possibly stale LOCALAPPDATA inherited from a launcher.
+    $localData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    if ([string]::IsNullOrWhiteSpace($localData)) {
+        throw 'Windows could not resolve the current user LocalApplicationData folder.'
+    }
+    return Join-Path $localData 'PSexp\ReleaseSigning\update-key.dpapi'
 }
 
 function Get-PSexpUpdateSigner([string]$Repository) {
@@ -15,7 +20,8 @@ function Get-PSexpUpdateSigner([string]$Repository) {
         throw 'Private signing keys must stay outside the source repository.'
     }
     if (-not (Test-Path -LiteralPath $keyFile -PathType Leaf)) {
-        throw 'Release signing key missing. Do not generate a replacement for an existing release key. Restore the original signing environment.'
+        throw ("Release signing key not found or not accessible: " + $keyFile +
+            ". Use the original Windows signing account/environment. Do not generate a replacement key.")
     }
     $trustPath = Join-Path $Repository 'PSdodo\Resources\Updates\update-public-key.json'
     $trusted = [IO.File]::ReadAllText($trustPath) | ConvertFrom-Json
@@ -35,6 +41,11 @@ function Get-PSexpUpdateSigner([string]$Repository) {
         return $rsa
     } catch {
         if ($null -ne $rsa) { $rsa.Dispose() }
+        if ($_.Exception.GetBaseException() -is [Security.Cryptography.CryptographicException]) {
+            throw ('Could not decrypt or load the original signing key for Windows account ' +
+                [Security.Principal.WindowsIdentity]::GetCurrent().Name +
+                '. File: ' + $keyFile + '. Restore its original Windows user/DPAPI environment; do not replace the key.')
+        }
         throw
     } finally {
         if ($null -ne $plain) { [Array]::Clear($plain, 0, $plain.Length) }
@@ -42,6 +53,14 @@ function Get-PSexpUpdateSigner([string]$Repository) {
 }
 
 function Assert-PSexpSigningReady([string]$Repository) {
+    $keyFile = Get-PSexpSigningKeyPath
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $source = 'Windows current-user LocalApplicationData'
+    if (-not [string]::IsNullOrWhiteSpace($env:PSexpSigningKeyFile)) { $source = 'PSexpSigningKeyFile override' }
+    Write-Host ('[signing] Windows account: ' + $identity)
+    Write-Host ('[signing] Key location source: ' + $source)
+    Write-Host ('[signing] Protected key file: ' + $keyFile)
+    # Paths and account names only. Never print private key bytes or DPAPI plaintext.
     $rsa = Get-PSexpUpdateSigner $Repository
     try { Write-Host 'Release signing identity available; private key will not be uploaded.' }
     finally { $rsa.Dispose() }
