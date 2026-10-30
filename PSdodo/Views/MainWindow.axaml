@@ -948,7 +948,7 @@
                                         <StackPanel Spacing="12">
                                             <TextBlock Text="Photoshop" Classes="settings-group-title"/>
                                             <Grid Classes="settings-row" ColumnDefinitions="*,112" ColumnSpacing="12">
-                                                <TextBlock Text="前台识别" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="PSexp 主窗口获得前台焦点时识别一次；后台、托盘隐藏或仅悬停展开时不自动识别。"/>
+                                                <TextBlock Text="前台识别" Classes="setting-label" VerticalAlignment="Center" ToolTip.Tip="PSexp 获得前台焦点时通过 COM 识别一次；不打开外部脚本。失败时请手动刷新，详情见日志。"/>
                                                 <Panel Grid.Column="1">
                                                     <controls:AnimatedSegmentTrack Classes="choice-track" SelectionValue="{Binding AutoRefreshOnActivated}">
                                                         <Grid ColumnDefinitions="*,*">

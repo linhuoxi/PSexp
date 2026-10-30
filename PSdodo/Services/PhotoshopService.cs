@@ -38,14 +38,19 @@ public sealed partial class PhotoshopService : IPhotoshopService
     public async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoAsync(CancellationToken ct = default)
     {
         if (_useUxpProbe) return await ProbeWithUxpAsync(ct);
+        var (document, res) = await ProbeDocumentInfoQuietlyAsync(ct);
+        if (res.Success || _probeUxpBridge is null) return (document, res);
+        // Only an explicit refresh/export preflight may use this fallback. Activation never enters here.
+        _useUxpProbe = true;
+        _probeLogger?.Warn("主动刷新时 COM 文档识别不可用，改用 UXP：" + res.Error);
+        return await ProbeWithUxpAsync(ct);
+    }
+
+    public async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoQuietlyAsync(CancellationToken ct = default)
+    {
+        // DoJavaScript executes inside the attached Photoshop instance; no ShellExecute, .psjs or focus activation.
         var res = await ExecuteScriptAsync(ScriptNames.ProbeDocumentInfo, EmptyArgs, ct);
-        if (!res.Success)
-        {
-            if (_probeUxpBridge is null) return (PsDocumentInfo.Empty, res);
-            _useUxpProbe = true;
-            _probeLogger?.Warn("COM 文档识别不可用，改用 UXP：" + res.Error);
-            return await ProbeWithUxpAsync(ct);
-        }
+        if (!res.Success) return (PsDocumentInfo.Empty, res);
         var doc = PsDocumentInfo.Parse(res.ReturnValue);
         if (doc is null)
             return (PsDocumentInfo.Empty, new PsBridgeResult

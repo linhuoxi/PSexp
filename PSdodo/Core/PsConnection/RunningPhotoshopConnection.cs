@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using Microsoft.Win32;
 
 namespace PsExporter.Core.PsConnection;
@@ -9,6 +10,8 @@ internal static class RunningPhotoshopConnection
 {
     private sealed record Registration(string ProgId, Guid ClassId, string ServerPath);
     private static readonly Lazy<Registration[]> Registrations = new(ReadRegistrations);
+    // Photoshop's _Application automation interface (also registered by the installed Photoshop type library).
+    private static readonly Guid ApplicationInterfaceId = new("5DE90358-4D0B-4FA1-BA3E-C91BBA863F32");
 
     public static object Attach(out string description)
     {
@@ -38,16 +41,116 @@ internal static class RunningPhotoshopConnection
             if (!tried.Add(candidate.ClassId)) continue;
             var classId = candidate.ClassId;
             var result = GetActiveObject(ref classId, IntPtr.Zero, out var application);
-            if (result >= 0 && application is not null)
+            if (result >= 0 && application is not null && MatchesRunningInstallation(application, runningPaths))
             {
                 description = $"连接已运行实例：{candidate.ProgId}；CLSID={classId}；server={candidate.ServerPath}";
                 return application;
             }
             if (application is not null && Marshal.IsComObject(application)) Marshal.ReleaseComObject(application);
-            failures.Add($"{candidate.ProgId}/0x{result:X8}");
+            failures.Add(result >= 0
+                ? $"{candidate.ProgId}/运行安装路径未匹配"
+                : $"{candidate.ProgId}/0x{result:X8}");
         }
-        throw new PsNotConnectedException("Photoshop 正在运行，但无法连接其自动化接口。请确认 Photoshop 与 PSexp 使用相同的权限级别，并在 Photoshop 就绪后刷新。"
-            + "未尝试启动新的 Photoshop 实例。连接记录：" + (failures.Count > 0 ? string.Join("；", failures) : "未找到可用的 COM 注册"));
+        // Some recent Photoshop versions expose a live application under a ROT identity that differs
+        // from the registered ProgID/CLSID. Discover by interface, then validate the running EXE path.
+        if (TryAttachFromRunningObjectTable(runningPaths, failures, out var discovered, out description))
+            return discovered!;
+        throw new PsNotConnectedException("Photoshop 正在运行，但无法连接其自动化接口。"
+            + "已检查注册名称和已运行对象表；未启动 Photoshop、未派发外部脚本。"
+            + "请查看同级 psx.log，核对 Photoshop 就绪状态与进程权限。连接记录："
+            + (failures.Count > 0 ? string.Join("；", failures) : "未找到可用的 COM 注册"));
+    }
+
+    private static bool TryAttachFromRunningObjectTable(HashSet<string> runningPaths, List<string> failures,
+        out object? application, out string description)
+    {
+        application = null;
+        description = string.Empty;
+        if (runningPaths.Count == 0)
+        {
+            failures.Add("ROT: 无法核对运行进程的安装路径");
+            return false;
+        }
+        IRunningObjectTable? table = null;
+        IEnumMoniker? enumerator = null;
+        var checkedCount = 0;
+        try
+        {
+            Marshal.ThrowExceptionForHR(GetRunningObjectTable(0, out table));
+            table.EnumRunning(out enumerator);
+            var monikers = new IMoniker[1];
+            while (enumerator.Next(1, monikers, IntPtr.Zero) == 0)
+            {
+                var moniker = monikers[0];
+                object? candidate = null;
+                try
+                {
+                    // GetObject only retrieves registered live objects. Never BindToObject or activate a class.
+                    if (table.GetObject(moniker, out candidate) < 0 || candidate is null) continue;
+                    checkedCount++;
+                    if (!ExposesPhotoshopApplication(candidate) || !MatchesRunningInstallation(candidate, runningPaths)) continue;
+                    application = candidate;
+                    candidate = null; // Ownership passes to WindowsComBridge, which releases it on the same STA.
+                    description = $"通过 ROT 接口发现 Photoshop 已运行实例；接口={ApplicationInterfaceId}；已核对运行安装路径";
+                    return true;
+                }
+                catch (COMException) { /* A live ROT entry can disappear while being enumerated. */ }
+                finally
+                {
+                    ReleaseCom(candidate);
+                    ReleaseCom(moniker);
+                }
+            }
+            failures.Add($"ROT: 已核对 {checkedCount} 个已运行对象，未发现可用 Photoshop 接口及路径匹配");
+        }
+        catch (Exception error) when (error is COMException or UnauthorizedAccessException)
+        {
+            failures.Add($"ROT: 0x{error.HResult:X8}");
+        }
+        finally
+        {
+            ReleaseCom(enumerator);
+            ReleaseCom(table);
+        }
+        return false;
+    }
+
+    private static bool ExposesPhotoshopApplication(object candidate)
+    {
+        IntPtr unknown = IntPtr.Zero, application = IntPtr.Zero;
+        try
+        {
+            unknown = Marshal.GetIUnknownForObject(candidate);
+            var interfaceId = ApplicationInterfaceId;
+            return Marshal.QueryInterface(unknown, ref interfaceId, out application) >= 0;
+        }
+        finally
+        {
+            if (application != IntPtr.Zero) Marshal.Release(application);
+            if (unknown != IntPtr.Zero) Marshal.Release(unknown);
+        }
+    }
+
+    private static bool MatchesRunningInstallation(object candidate, HashSet<string> runningPaths)
+    {
+        try
+        {
+            dynamic photoshop = candidate;
+            string directory = Convert.ToString(photoshop.Path, System.Globalization.CultureInfo.InvariantCulture) ?? "";
+            return !string.IsNullOrWhiteSpace(directory)
+                && runningPaths.Contains(Path.GetFullPath(Path.Combine(directory, "Photoshop.exe")));
+        }
+        catch (Exception error) when (error is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException
+            or ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static void ReleaseCom(object? value)
+    {
+        if (value is not null && Marshal.IsComObject(value))
+            try { Marshal.ReleaseComObject(value); } catch (InvalidComObjectException) { }
     }
 
     private static Registration[] ReadRegistrations()
@@ -76,6 +179,9 @@ internal static class RunningPhotoshopConnection
         }
         return items.ToArray();
     }
+
+    [DllImport("ole32.dll")]
+    private static extern int GetRunningObjectTable(uint reserved, out IRunningObjectTable table);
 
     [DllImport("oleaut32.dll", ExactSpelling = true, PreserveSig = true)]
     private static extern int GetActiveObject(ref Guid classId, IntPtr reserved,

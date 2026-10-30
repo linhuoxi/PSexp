@@ -23,7 +23,7 @@ public sealed class UxpScriptBridge
     /// 执行 UXP 脚本：写入临时 .psjs 文件（UTF8 BOM），用文件关联打开。
     /// 返回临时文件路径（调用方负责清理）。
     /// </summary>
-    public async Task<UxpResult> ExecuteAsync(string scriptContent, CancellationToken ct = default, Func<bool>? canDispatch = null)
+    public async Task<UxpResult> ExecuteAsync(string scriptContent, CancellationToken ct = default)
     {
         // 写临时 .psjs 文件（UTF8 with BOM —— PS 识别 .psjs 需要 BOM）
         var tempDir = Path.GetTempPath();
@@ -36,13 +36,7 @@ public sealed class UxpScriptBridge
         var dispatched = false;
         try
         {
-            // Async file writing may outlive the activation. Recheck immediately before ShellExecute.
             ct.ThrowIfCancellationRequested();
-            if (canDispatch?.Invoke() == false)
-            {
-                File.Delete(tempFile);
-                return new UxpResult { Success = false, Error = new OperationCanceledException("窗口已失去前台焦点，跳过本次 UXP 探针") };
-            }
             // 用文件关联打开（相当于双击 .psjs 文件）
             // UseShellExecute=true 让 Windows 用关联的程序（Photoshop）打开
             var psi = new ProcessStartInfo

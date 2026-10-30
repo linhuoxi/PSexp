@@ -52,7 +52,7 @@ public sealed class AppSettings
     /// <summary>启动后保持窗口置顶</summary>
     public bool StartAlwaysOnTop { get; set; }
 
-    /// <summary>PSexp 主窗口获得前台焦点时，自动执行一次 UXP 文档识别</summary>
+    /// <summary>PSexp 主窗口获得前台焦点时，自动通过 COM 内部读取一次文档信息</summary>
     public bool AutoRefreshOnActivated { get; set; } = true;
 
     /// <summary>拖拽窗口贴到屏幕边缘吸附与 Q 弹动效</summary>

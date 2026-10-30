@@ -487,7 +487,7 @@ public partial class MainViewModel : ViewModelBase
     }
 
     // ---------- 状态机：自动探测 ----------
-    private async Task RefreshStatusAsync(bool silent, bool useUxp = false, Func<bool>? canDispatch = null)
+    private async Task RefreshStatusAsync(bool silent, bool quiet = false)
     {
         if (!CanRefreshStatus) return;
         IsRefreshingStatus = true;
@@ -507,11 +507,9 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            var (doc, probeResult) = useUxp
-                ? await _ps.ProbeDocumentInfoWithUxpAsync(canDispatch)
+            var (doc, probeResult) = quiet
+                ? await _ps.ProbeDocumentInfoQuietlyAsync()
                 : await _ps.ProbeDocumentInfoAsync();
-            // Losing foreground before dispatch cancels this activation, rather than reporting a document failure.
-            if (probeResult.Error is OperationCanceledException) return;
             // 把脚本端日志透传到 UI 日志面板
             foreach (var log in probeResult.Logs)
                 AppendLog(log.Level.ToString(), log.Message);
@@ -572,15 +570,15 @@ public partial class MainViewModel : ViewModelBase
         bool suppressNextActivation)
         => enabled && !isBusy && !isRefreshing && !suppressNextActivation;
 
-    public async Task RefreshOnActivationAsync(Func<bool>? canDispatch = null)
+    public async Task RefreshOnActivationAsync(Func<bool>? isForeground = null)
     {
         var suppress = _suppressNextActivationRefresh;
         _suppressNextActivationRefresh = false;
         if (!CanRefreshOnActivation(AutoRefreshOnActivated, IsBusy, IsRefreshingStatus, suppress)
-            || canDispatch?.Invoke() == false) return;
+            || isForeground?.Invoke() == false) return;
 
-        AppendLog("Debug", "PSexp 主窗口获得前台焦点，执行一次 UXP 文档识别");
-        await RefreshStatusAsync(silent: true, useUxp: true, canDispatch: canDispatch);
+        AppendLog("Debug", "PSexp 主窗口获得前台焦点，执行一次 COM 文档识别（不派发外部脚本）");
+        await RefreshStatusAsync(silent: true, quiet: true);
     }
 
     private void SuppressNextActivationRefresh() => _suppressNextActivationRefresh = true;

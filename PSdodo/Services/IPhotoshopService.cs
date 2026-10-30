@@ -21,10 +21,10 @@ public interface IPhotoshopService
     /// <summary>探测文档信息，并通过 out 返回底层执行结果（含错误/日志）</summary>
     Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoAsync(CancellationToken ct = default);
 
-    /// <summary>前台激活时明确使用 UXP；派发前再次检查焦点。默认实现供替代服务兼容。</summary>
-    Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoWithUxpAsync(
-        System.Func<bool>? canDispatch = null, CancellationToken ct = default)
-        => ProbeDocumentInfoAsync(ct);
+    /// <summary>自动识别专用：只连接运行实例并内部调用 COM，不允许回退到外部 UXP 脚本。</summary>
+    Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoQuietlyAsync(CancellationToken ct = default)
+        => Task.FromResult((PsDocumentInfo.Empty,
+            PsBridgeResult.Failed(new System.NotSupportedException("当前文档服务不支持无外部脚本识别"))));
 
     Task<List<ArtboardInfo>> ListArtboardsAsync(CancellationToken ct = default);
 

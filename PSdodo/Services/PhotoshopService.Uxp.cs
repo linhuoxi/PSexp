@@ -12,14 +12,7 @@ public sealed partial class PhotoshopService
     private readonly UxpScriptBridge? _probeUxpBridge;
     private readonly FileLogger? _probeLogger;
     private bool _useUxpProbe;
-    public Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeDocumentInfoWithUxpAsync(
-        Func<bool>? canDispatch = null, CancellationToken ct = default)
-    {
-        _useUxpProbe = true;
-        return ProbeWithUxpAsync(ct, canDispatch);
-    }
-
-    private async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeWithUxpAsync(CancellationToken ct, Func<bool>? canDispatch = null)
+    private async Task<(PsDocumentInfo Doc, PsBridgeResult Result)> ProbeWithUxpAsync(CancellationToken ct)
     {
         if (_probeUxpBridge is null)
             return (PsDocumentInfo.Empty, PsBridgeResult.Failed(new IOException("未配置 UXP 文档识别通道")));
@@ -30,7 +23,7 @@ public sealed partial class PhotoshopService
         {
             ["RESULT_FOLDER_URL"] = ScriptParameterInjector.EscapeJsString(ExportService.ToUxpFolderUrl(taskDirectory))
         });
-        var dispatched = await _probeUxpBridge.ExecuteAsync(script, ct, canDispatch);
+        var dispatched = await _probeUxpBridge.ExecuteAsync(script, ct);
         _probeLogger?.Info($"UXP 文档识别启动 success={dispatched.Success}；脚本={dispatched.TempFilePath}；回执={taskDirectory}");
         if (!dispatched.Success)
             return (PsDocumentInfo.Empty, PsBridgeResult.Failed(dispatched.Error ?? new IOException("UXP 文档识别脚本未启动")));
@@ -61,7 +54,7 @@ public sealed partial class PhotoshopService
                         document.Path = Path.IsPathFullyQualified(document.Path) ? Path.GetDirectoryName(document.Path) ?? "" : "";
                         var logs = new List<PsLogEntry>
                         {
-                            new() { Level = PsLogLevel.Info, Message = "已通过 UXP 读取文档；前台识别仅在 PSexp 获得焦点时执行一次，导出前另行刷新。" }
+                            new() { Level = PsLogLevel.Info, Message = "已通过 UXP 完成主动文档识别；自动前台识别仅使用 COM，不派发外部 UXP 脚本。" }
                         };
                         foreach (var warning in root.GetProperty("warnings").EnumerateArray())
                             logs.Add(new PsLogEntry { Level = PsLogLevel.Warn, Message = warning.GetString() ?? "" });

@@ -950,7 +950,7 @@ public partial class MainWindow : Window
     private void OnWindowActivated(object? sender, EventArgs e)
         => QueueForegroundDocumentProbe();
 
-    private bool CanDispatchForegroundDocumentProbe()
+    private bool CanReadForegroundDocument()
     {
         if (_isClosing || _isRestoringPlacement || !_placementRestorationCompleted
             || _isHiddenToTray || _isSnapAnimating || (_isDocked && !_isDockRevealed)
@@ -965,11 +965,11 @@ public partial class MainWindow : Window
         // One queued check per activation, after placement/animation has settled. Never poll or activate the window here.
         Dispatcher.UIThread.Post(async () =>
         {
-            if (_hasProbedCurrentActivation || !CanDispatchForegroundDocumentProbe()
+            if (_hasProbedCurrentActivation || !CanReadForegroundDocument()
                 || DataContext is not MainViewModel vm) return;
             _hasProbedCurrentActivation = true;
             // Also consumes activations during an existing probe/export, so completion cannot cause another probe.
-            await vm.RefreshOnActivationAsync(CanDispatchForegroundDocumentProbe);
+            await vm.RefreshOnActivationAsync(CanReadForegroundDocument);
         }, DispatcherPriority.Loaded);
     }
 
